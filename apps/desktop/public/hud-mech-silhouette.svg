@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#62e9ff" stop-opacity="0.35"/>
+      <stop offset="50%" stop-color="#45ffb1" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#ffc857" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- Stylized power armor / mech silhouette -->
+  <g stroke="url(#g)" stroke-width="1.2" filter="url(#glow)" opacity="0.9">
+    <path d="M200 48 L248 92 L260 168 L280 220 L268 280 L240 320 L200 340 L160 320 L132 280 L120 220 L140 168 L152 92 Z"/>
+    <path d="M200 340 L200 420"/>
+    <path d="M200 380 L140 460 M200 380 L260 460"/>
+    <ellipse cx="200" cy="118" rx="36" ry="44"/>
+    <path d="M140 168 L100 200 L88 260 L108 300"/>
+    <path d="M260 168 L300 200 L312 260 L292 300"/>
+    <path d="M168 220 L120 240 L96 280"/>
+    <path d="M232 220 L280 240 L304 280"/>
+    <circle cx="200" cy="112" r="6" fill="#62e9ff" fill-opacity="0.5" stroke="none"/>
+    <rect x="176" y="248" width="48" height="72" rx="6" opacity="0.6"/>
+  </g>
+</svg>
