@@ -1,5 +1,8 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { CinematicHandLab } from "./features/handLab/CinematicHandLab.jsx";
+import { drawHandTrackingOverlay } from "./features/handLab/handLabDraw.js";
 
 const API_URL = "http://127.0.0.1:8766";
 const MOUSE_SETTINGS_STORAGE_KEY = "ia_moves_mouse_settings_v2";
@@ -11,6 +14,14 @@ const gestureActions = {
   point: "click",
   thumb_up: "confirm",
   victory: "toggle_mouse_mode",
+};
+
+const actionHintByKey = {
+  open_start: "Abrir menú Inicio del sistema",
+  show_desktop: "Mostrar escritorio",
+  click: "Enviar click en foco actual",
+  confirm: "Confirmar selección actual",
+  toggle_mouse_mode: "Alternar control por mouse",
 };
 
 const pcActions = [
@@ -30,15 +41,6 @@ const mousePresets = {
   gaming: { sensitivity: 2800, smoothing: 0.5, deadzone: 0.0045, invert_x: true, invert_y: false },
   pro: { sensitivity: 2500, smoothing: 0.46, deadzone: 0.005, invert_x: true, invert_y: false },
 };
-
-const handConnections = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [5, 9], [9, 10], [10, 11], [11, 12],
-  [9, 13], [13, 14], [14, 15], [15, 16],
-  [13, 17], [17, 18], [18, 19], [19, 20],
-  [0, 17],
-];
 
 const POINTER_REACQUIRE_RADIUS = 0.12;
 const POINTER_REACQUIRE_FRAMES = 5;
@@ -99,7 +101,7 @@ function getStablePointerPoint(hand) {
 
 export function App() {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const landmarkCanvasRef = useRef(null);
   const streamRef = useRef(null);
   const visionRunningRef = useRef(false);
   const workerRef = useRef(null);
@@ -129,7 +131,6 @@ export function App() {
   const configSyncTimerRef = useRef(null);
   const mouseGestureTimerRef = useRef(null);
   const workerRecoveryRef = useRef({ attempts: 0, forcingCpu: false });
-  const atomCanvasRef = useRef(null);
   const atomInteractionRef = useRef({
     left: { atomId: null, startDistance: 0, startRadius: 0 },
     right: { atomId: null, startDistance: 0, startRadius: 0 },
@@ -154,8 +155,29 @@ export function App() {
   const [neuralFocus, setNeuralFocus] = useState("mediapipe");
   const [trackedHands, setTrackedHands] = useState([]);
   const [atoms, setAtoms] = useState(() => createAtomField());
+  const [handLabTriMode, setHandLabTriMode] = useState(1);
+  const [wsConnected, setWsConnected] = useState(false);
+  const handLabTriModeRef = useRef(1);
+  const trackedHandsRef = useRef([]);
+  const mouseAssistRef = useRef({ armed: false, centerFrames: 0, notice: "Mano al centro para enganchar mouse" });
 
   const currentAction = useMemo(() => gestureActions[gesture.name] ?? "sin accion", [gesture.name]);
+
+  const handLabSuggestedAction = useMemo(() => {
+    if (currentAction === "sin accion") return "Sin acción mapeada al gesto actual";
+    return actionHintByKey[currentAction] ?? String(currentAction);
+  }, [currentAction]);
+
+  const advanceHandLabTriMode = useCallback(() => {
+    const next = (handLabTriModeRef.current + 1) % 3;
+    setHandLabTriMode(next);
+    if (next === 1) {
+      setControlMode("commands");
+    } else if (next === 2) {
+      setControlMode("mouse");
+    }
+    pushEvent(`Lab: modo vector → ${["LAB", "COMANDOS", "MOUSE"][next]}.`);
+  }, []);
 
   useEffect(() => {
     controlRef.current = control;
@@ -174,12 +196,20 @@ export function App() {
   }, [antiJitter]);
 
   useEffect(() => {
-    visionRunningRef.current = vision.running;
-  }, [vision.running]);
+    mouseAssistRef.current = mouseAssist;
+  }, [mouseAssist]);
 
   useEffect(() => {
-    drawAtomLab();
-  }, [atoms]);
+    handLabTriModeRef.current = handLabTriMode;
+  }, [handLabTriMode]);
+
+  useEffect(() => {
+    trackedHandsRef.current = trackedHands;
+  }, [trackedHands]);
+
+  useEffect(() => {
+    visionRunningRef.current = vision.running;
+  }, [vision.running]);
 
   useEffect(() => {
     checkHealth();
@@ -340,12 +370,21 @@ export function App() {
     }
 
     const socket = new WebSocket(controlWsUrl());
-    socket.onopen = () => pushEvent("Canal control WS activo.");
+    socket.onopen = () => {
+      setWsConnected(true);
+      pushEvent("Canal control WS activo.");
+    };
     socket.onclose = () => {
-      if (wsRef.current === socket) wsRef.current = null;
+      if (wsRef.current === socket) {
+        wsRef.current = null;
+        setWsConnected(false);
+      }
     };
     socket.onerror = () => {
-      if (wsRef.current === socket) wsRef.current = null;
+      if (wsRef.current === socket) {
+        wsRef.current = null;
+        setWsConnected(false);
+      }
     };
     wsRef.current = socket;
   }
@@ -608,63 +647,6 @@ export function App() {
         y: Math.min(0.97, Math.max(0.03, atom.y)),
       }));
     });
-  }
-
-  function drawAtomLab() {
-    const canvas = atomCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const width = canvas.clientWidth || 480;
-    const height = canvas.clientHeight || 280;
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "rgba(5, 14, 24, 0.85)";
-    ctx.fillRect(0, 0, width, height);
-
-    for (const atom of atoms) {
-      const x = atom.x * width;
-      const y = atom.y * height;
-      const glow = atom.radius * 1.8;
-      const gradient = ctx.createRadialGradient(x, y, atom.radius * 0.15, x, y, glow);
-      gradient.addColorStop(0, `hsla(${atom.hue}, 95%, 76%, 0.95)`);
-      gradient.addColorStop(1, `hsla(${atom.hue}, 95%, 46%, 0.08)`);
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, glow, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = `hsla(${atom.hue}, 95%, 72%, 0.9)`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, atom.radius, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // Cursores de pinch (mano izquierda/derecha) para feedback visual directo.
-    const drawPinchCursor = (hand, color) => {
-      const pinch = pinchCenter(hand);
-      if (!pinch) return;
-      const x = pinch.x * width;
-      const y = pinch.y * height;
-      ctx.beginPath();
-      ctx.lineWidth = pinch.active ? 3 : 2;
-      ctx.strokeStyle = color;
-      ctx.arc(x, y, pinch.active ? 16 : 11, 0, Math.PI * 2);
-      ctx.stroke();
-      if (pinch.active) {
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.22;
-        ctx.beginPath();
-        ctx.arc(x, y, 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    };
-
-    drawPinchCursor(trackedHands[0], "rgba(98, 233, 255, 0.95)");
-    drawPinchCursor(trackedHands[1], "rgba(255, 200, 87, 0.95)");
   }
 
   async function ensureFallbackVision() {
@@ -1111,89 +1093,36 @@ export function App() {
   }
 
   function drawOverlay(hand, nextGesture) {
-    const canvas = canvasRef.current;
+    const canvas = landmarkCanvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
 
-    const width = video.videoWidth || 960;
-    const height = video.videoHeight || 540;
+    const width = canvas.clientWidth || video.videoWidth || 960;
+    const height = canvas.clientHeight || video.videoHeight || 540;
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
 
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, width, height);
-
-    if (controlRef.current.mouse_enabled) {
-      const centerX = width * 0.5;
-      const centerY = height * 0.5;
-      const radius = Math.min(width, height) * POINTER_REACQUIRE_RADIUS;
-      ctx.save();
-      ctx.beginPath();
-      ctx.lineWidth = 2;
-      ctx.setLineDash([10, 10]);
-      ctx.strokeStyle = mouseAssist.armed ? "rgba(69, 255, 177, 0.55)" : "rgba(255, 200, 87, 0.85)";
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(centerX - 18, centerY);
-      ctx.lineTo(centerX + 18, centerY);
-      ctx.moveTo(centerX, centerY - 18);
-      ctx.lineTo(centerX, centerY + 18);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    if (!hand) {
-      ctx.fillStyle = "rgba(98, 233, 255, 0.72)";
-      ctx.font = "24px Segoe UI";
-      ctx.fillText("Buscando mano...", 24, 42);
-      return;
-    }
-
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = nextGesture.stale ? "rgba(255, 200, 87, 0.82)" : "rgba(98, 233, 255, 0.95)";
-    ctx.shadowBlur = 16;
-    ctx.shadowColor = "rgba(98, 233, 255, 0.7)";
-    handConnections.forEach(([from, to]) => {
-      ctx.beginPath();
-      ctx.moveTo(hand[from].x * width, hand[from].y * height);
-      ctx.lineTo(hand[to].x * width, hand[to].y * height);
-      ctx.stroke();
+    if (!ctx) return;
+    const hands = trackedHandsRef.current?.length
+      ? trackedHandsRef.current
+      : (hand ? [hand] : []);
+    drawHandTrackingOverlay(ctx, width, height, {
+      hand,
+      hands,
+      gesture: nextGesture,
+      mouseEnabled: controlRef.current.mouse_enabled,
+      mouseAssist: mouseAssistRef.current,
+      pointerReacquireRadius: POINTER_REACQUIRE_RADIUS,
     });
-
-    hand.forEach((point, index) => {
-      const isTip = [4, 8, 12, 16, 20].includes(index);
-      ctx.beginPath();
-      ctx.fillStyle = isTip ? "#45ffb1" : "#ffc857";
-      ctx.arc(point.x * width, point.y * height, isTip ? 8 : 5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    if (controlRef.current.mouse_enabled) {
-      const thumb = hand[4];
-      const index = hand[8];
-      const pinchDistance = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-      const pinching = pinchDistance < 0.075;
-      ctx.beginPath();
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = pinching ? "#45ffb1" : "rgba(255,255,255,0.55)";
-      ctx.moveTo(thumb.x * width, thumb.y * height);
-      ctx.lineTo(index.x * width, index.y * height);
-      ctx.stroke();
-    }
-
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "#62e9ff";
-    ctx.font = "28px Segoe UI";
-    const staleLabel = nextGesture.stale ? " hold" : "";
-    ctx.fillText(`${nextGesture.name}${staleLabel} ${Math.round((nextGesture.confidence ?? 0) * 100)}%`, 24, 42);
   }
 
   function clearCanvas() {
-    const canvas = canvasRef.current;
+    const canvas = landmarkCanvasRef.current;
     if (!canvas) return;
-    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   async function executeAction(action = currentAction, source = "desktop") {
@@ -1385,15 +1314,18 @@ export function App() {
               </select>
               <button onClick={loadCameras}>Probar camaras</button>
             </div>
-            <div className={`scanner neo-scanner ${vision.running ? "" : "neo-scanner--idle"}`}>
+            <div className={`scanner neo-scanner ${vision.running ? "neo-scanner--live" : "neo-scanner--idle"}`}>
               <div className="corner c1" />
               <div className="corner c2" />
               <div className="corner c3" />
               <div className="corner c4" />
               {vision.running ? (
-                <div className="camera-stage">
-                  <video ref={videoRef} className="camera-feed" playsInline muted />
-                  <canvas ref={canvasRef} className="landmark-layer" />
+                <div className="vision-matrix-live" role="status">
+                  <span className="vision-matrix-pulse" aria-hidden="true" />
+                  <p>
+                    <strong>FEED EN HAND LAB</strong>
+                    <span>Tracking activo en el panel inferior · Cinematic Hand Control Lab</span>
+                  </p>
                 </div>
               ) : (
                 <Suspense
@@ -1503,33 +1435,25 @@ export function App() {
         </div>
 
         <div className="bento-tile bento-atom">
-          <article className="hud-panel neo-card bento-card atom-card">
-            <div className="panel-title bento-panel-head">
-              <div>
-                <span className="bento-kicker">ATOM LAB · 2 HANDS</span>
-                <span>Neural manipulation sandbox</span>
-              </div>
-              <button onClick={organizeAtoms}>Organizar</button>
-            </div>
-            <p className="bento-panel-blurb subtle">
-              Pinch con una mano para agarrar y mover atomos. Pinch con ambas sobre el mismo atomo para expandir o achicar.
-            </p>
-            <canvas ref={atomCanvasRef} className="atom-lab-canvas" />
-            <div className="metric-row neo-metric-row atom-lab-metrics">
-              <div>
-                <small>Manos</small>
-                <strong>{trackedHands.length}</strong>
-              </div>
-              <div>
-                <small>Atomos</small>
-                <strong>{atoms.length}</strong>
-              </div>
-              <div>
-                <small>Modo</small>
-                <strong>Pinch lab</strong>
-              </div>
-            </div>
-          </article>
+          <CinematicHandLab
+            videoRef={videoRef}
+            landmarkCanvasRef={landmarkCanvasRef}
+            vision={vision}
+            gesture={gesture}
+            perf={perf}
+            control={control}
+            events={events}
+            health={health}
+            atoms={atoms}
+            trackedHands={trackedHands}
+            wsConnected={wsConnected}
+            suggestedAction={handLabSuggestedAction}
+            triModeIndex={handLabTriMode}
+            onAdvanceTriMode={advanceHandLabTriMode}
+            onOrganizeAtoms={organizeAtoms}
+            onToggleCamera={() => (vision.running ? stopVision() : startVision())}
+            answer={answer}
+          />
         </div>
 
         <div className="bento-tile bento-control">

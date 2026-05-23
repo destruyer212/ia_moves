@@ -1,0 +1,784 @@
+/* Cinematic Hand Control Lab — capa visual autónoma */
+
+.handlab-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 520px;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(98, 233, 255, 0.28);
+  background:
+    linear-gradient(165deg, rgba(98, 233, 255, 0.07), transparent 42%),
+    linear-gradient(145deg, rgba(10, 18, 32, 0.95), rgba(4, 8, 16, 0.98));
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.45),
+    inset 0 0 50px rgba(98, 233, 255, 0.04);
+}
+
+.handlab-breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 4px 0 2px;
+}
+
+.handlab-breadcrumb-kicker {
+  font-family: var(--font-mono, "Share Tech Mono", monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  color: rgba(98, 233, 255, 0.72);
+}
+
+.handlab-breadcrumb-title {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: #e8fbff;
+  margin: 0;
+}
+
+.handlab-float-tag {
+  font-family: var(--font-mono, "Share Tech Mono", monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  padding: 6px 12px;
+  border: 1px solid rgba(98, 233, 255, 0.38);
+  border-radius: 4px;
+  background: rgba(4, 14, 24, 0.55);
+  color: rgba(180, 240, 255, 0.88);
+  box-shadow: 0 0 18px rgba(98, 233, 255, 0.1);
+}
+
+.handlab-float-tag--pulse {
+  animation: handlab-tag-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes handlab-tag-pulse {
+  0%,
+  100% {
+    border-color: rgba(98, 233, 255, 0.35);
+    box-shadow: 0 0 12px rgba(98, 233, 255, 0.08);
+  }
+  50% {
+    border-color: rgba(69, 255, 177, 0.55);
+    box-shadow: 0 0 22px rgba(69, 255, 177, 0.18);
+  }
+}
+
+.handlab-stage {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 240px);
+  gap: 12px;
+  align-items: stretch;
+  min-height: 360px;
+  flex: 1;
+}
+
+.handlab-stage--immersive {
+  display: block;
+  min-height: 420px;
+}
+
+.handlab-root--immersive {
+  min-height: 560px;
+}
+
+.handlab-hud-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.handlab-hud-layer > * {
+  pointer-events: auto;
+}
+
+.handlab-chrome {
+  position: absolute;
+  pointer-events: none;
+}
+
+.handlab-chrome--top {
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.handlab-chrome--top .handlab-pill-btn {
+  pointer-events: auto;
+}
+
+.handlab-hero-title {
+  margin: 0;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow:
+    0 0 24px rgba(98, 233, 255, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.handlab-pill-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.handlab-pill-btn:hover {
+  border-color: rgba(98, 233, 255, 0.8);
+  box-shadow: 0 0 20px rgba(98, 233, 255, 0.25);
+}
+
+.handlab-chrome--center {
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  max-width: 90%;
+}
+
+.handlab-focus-title {
+  display: block;
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
+  font-weight: 600;
+  color: rgba(200, 250, 255, 0.95);
+  text-shadow: 0 0 20px rgba(0, 220, 255, 0.45);
+  letter-spacing: 0.04em;
+}
+
+.handlab-focus-sub {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  color: rgba(98, 233, 255, 0.75);
+}
+
+.handlab-chrome--bl {
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handlab-zoom-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 200, 87, 0.35);
+}
+
+.handlab-zoom-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 200, 87, 0.85);
+}
+
+.handlab-zoom-pill strong {
+  font-size: 0.9rem;
+  color: rgba(255, 220, 140, 0.98);
+}
+
+.handlab-cursor-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(98, 233, 255, 0.2);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: rgba(200, 230, 240, 0.8);
+}
+
+.handlab-cursor-icon {
+  color: rgba(98, 233, 255, 0.9);
+  font-size: 0.85rem;
+}
+
+.handlab-cursor-mode {
+  color: rgba(69, 255, 177, 0.9);
+}
+
+.handlab-chrome--gesture {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.handlab-gesture-nav {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.22em;
+  color: rgba(150, 210, 230, 0.55);
+}
+
+.handlab-hud-br {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  top: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  width: min(220px, 38vw);
+  pointer-events: none;
+}
+
+.handlab-hud-br > * {
+  pointer-events: auto;
+}
+
+.handlab-nearby {
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(98, 233, 255, 0.28);
+  backdrop-filter: blur(12px);
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.handlab-nearby-head {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(98, 233, 255, 0.15);
+}
+
+.handlab-nearby-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  color: rgba(180, 240, 255, 0.85);
+}
+
+.handlab-nearby-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.handlab-nearby-row {
+  display: grid;
+  grid-template-columns: 1fr 48px 32px;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.68rem;
+}
+
+.handlab-nearby-row--focus .handlab-nearby-label {
+  color: rgba(255, 230, 200, 0.95);
+}
+
+.handlab-nearby-label {
+  color: rgba(200, 235, 248, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.handlab-nearby-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(98, 233, 255, 0.12);
+  overflow: hidden;
+}
+
+.handlab-nearby-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(98, 233, 255, 0.5), rgba(69, 255, 177, 0.85));
+  border-radius: 2px;
+}
+
+.handlab-nearby-pct {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  color: rgba(69, 255, 177, 0.9);
+  text-align: right;
+}
+
+.handlab-nearby-focus {
+  margin: 8px 0 0;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  color: rgba(98, 233, 255, 0.65);
+}
+
+.handlab-panel--compact {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.handlab-panel--compact .handlab-dl-row {
+  font-size: 0.65rem;
+  padding-bottom: 3px;
+}
+
+.handlab-toolbar-hint {
+  margin-left: auto;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: rgba(150, 200, 220, 0.7);
+}
+
+.handlab-camera-layer {
+  min-height: 420px;
+}
+
+.handlab-fusion {
+  z-index: 5;
+  mix-blend-mode: screen;
+  filter: saturate(1.15);
+}
+
+.handlab-landmarks {
+  z-index: 7;
+}
+
+.handlab-status-bar {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .handlab-stage:not(.handlab-stage--immersive) {
+    grid-template-columns: 1fr;
+  }
+
+  .handlab-hud-br {
+    width: min(200px, 44vw);
+  }
+
+  .handlab-hero-title {
+    font-size: 1.1rem;
+  }
+}
+
+.handlab-camera-layer {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 320px;
+  aspect-ratio: 16 / 9;
+  background: #02060c;
+  border: 1px solid rgba(98, 233, 255, 0.22);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55);
+}
+
+.handlab-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  z-index: 1;
+}
+
+.handlab-video--off {
+  opacity: 0.12;
+  filter: grayscale(1);
+}
+
+.handlab-video--live {
+  opacity: 1;
+}
+
+.handlab-camera-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 28%, rgba(2, 6, 12, 0.82) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, transparent 22%, transparent 72%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+.handlab-camera-glass {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(125deg, rgba(255, 255, 255, 0.03), transparent 40%, rgba(98, 233, 255, 0.04));
+  mix-blend-mode: screen;
+}
+
+.handlab-scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.07;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.45) 2px,
+    rgba(0, 0, 0, 0.45) 3px
+  );
+}
+
+.handlab-camera-noise {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+.handlab-landmarks {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+.handlab-fusion {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.handlab-demo-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+  text-align: center;
+  padding: 16px;
+}
+
+.handlab-demo-overlay strong {
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  color: rgba(98, 233, 255, 0.9);
+}
+
+.handlab-demo-overlay span {
+  font-size: 0.78rem;
+  color: rgba(200, 230, 240, 0.65);
+  max-width: 28ch;
+}
+
+.handlab-corner-frame {
+  position: absolute;
+  inset: 8px;
+  z-index: 8;
+  pointer-events: none;
+  border: 1px solid rgba(98, 233, 255, 0.14);
+  border-radius: 10px;
+}
+
+.handlab-corner-frame::before,
+.handlab-corner-frame::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(98, 233, 255, 0.55);
+}
+
+.handlab-corner-frame::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.handlab-corner-frame::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
+}
+
+.handlab-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(3, 10, 18, 0.72);
+  border: 1px solid rgba(98, 233, 255, 0.2);
+}
+
+.handlab-status-cell {
+  flex: 1;
+  min-width: 100px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(6, 16, 28, 0.65);
+  border: 1px solid rgba(120, 160, 180, 0.15);
+}
+
+.handlab-status-cell--ok {
+  border-color: rgba(69, 255, 177, 0.35);
+  box-shadow: 0 0 14px rgba(69, 255, 177, 0.08);
+}
+
+.handlab-status-label {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  color: rgba(160, 210, 230, 0.75);
+}
+
+.handlab-status-sub {
+  font-size: 0.68rem;
+  color: rgba(230, 250, 255, 0.88);
+}
+
+.handlab-panel {
+  border-radius: 10px;
+  background: rgba(4, 22, 36, 0.48);
+  border: 1px solid rgba(98, 233, 255, 0.26);
+  backdrop-filter: blur(10px);
+  padding: 10px 12px;
+  box-shadow: inset 0 0 24px rgba(98, 233, 255, 0.04);
+}
+
+.handlab-panel--right {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handlab-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(98, 233, 255, 0.12);
+  padding-bottom: 6px;
+}
+
+.handlab-chip {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(98, 233, 255, 0.15);
+  color: rgba(200, 250, 255, 0.9);
+}
+
+.handlab-chip--amber {
+  background: rgba(255, 200, 87, 0.18);
+  color: rgba(255, 230, 200, 0.95);
+}
+
+.handlab-panel-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: rgba(230, 248, 255, 0.9);
+}
+
+.handlab-dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.handlab-dl-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 6px;
+  font-size: 0.72rem;
+  border-bottom: 1px solid rgba(98, 233, 255, 0.06);
+  padding-bottom: 4px;
+}
+
+.handlab-dl-row dt {
+  margin: 0;
+  color: rgba(150, 200, 220, 0.65);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+
+.handlab-dl-row dd {
+  margin: 0;
+  text-align: right;
+  color: #e8fbff;
+}
+
+.handlab-mono {
+  font-family: var(--font-mono, "Share Tech Mono", monospace);
+}
+
+.handlab-glow {
+  text-shadow: 0 0 12px rgba(98, 233, 255, 0.45);
+}
+
+.handlab-accent {
+  color: rgba(69, 255, 177, 0.95);
+}
+
+.handlab-dim {
+  color: rgba(200, 230, 240, 0.7);
+}
+
+.handlab-ok {
+  color: rgba(69, 255, 177, 0.95);
+}
+
+.handlab-warn {
+  color: rgba(255, 200, 87, 0.88);
+}
+
+.handlab-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.handlab-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: rgba(180, 220, 235, 0.85);
+}
+
+.handlab-toolbar select {
+  background: rgba(6, 16, 28, 0.9);
+  color: #e8fbff;
+  border: 1px solid rgba(98, 233, 255, 0.35);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.handlab-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(98, 233, 255, 0.45);
+  background: rgba(98, 233, 255, 0.08);
+  color: rgba(220, 252, 255, 0.95);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.handlab-btn:hover {
+  border-color: rgba(69, 255, 177, 0.55);
+  box-shadow: 0 0 16px rgba(69, 255, 177, 0.15);
+}
+
+.handlab-btn--cam {
+  border-color: rgba(69, 255, 177, 0.5);
+  background: rgba(69, 255, 177, 0.1);
+}
+
+.handlab-panel--console {
+  max-height: 140px;
+  overflow: hidden;
+}
+
+.handlab-console-body {
+  max-height: 96px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.handlab-console-line {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  font-size: 0.68rem;
+  border-left: 2px solid rgba(98, 233, 255, 0.25);
+  padding-left: 8px;
+}
+
+.handlab-console-line time {
+  color: rgba(150, 210, 230, 0.65);
+}
+
+.handlab-console-line p {
+  margin: 0;
+  color: rgba(230, 248, 255, 0.88);
+}
+
+.handlab-init-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  padding: 8px 16px;
+  border: 1px solid rgba(69, 255, 177, 0.45);
+  color: rgba(200, 255, 230, 0.95);
+  background: rgba(4, 18, 28, 0.82);
+  border-radius: 6px;
+  pointer-events: none;
+  animation: handlab-fade-banner 4.2s ease forwards;
+}
+
+@keyframes handlab-fade-banner {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

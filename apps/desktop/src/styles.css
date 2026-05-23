@@ -1870,7 +1870,8 @@ small,
   grid-template-rows: auto auto minmax(200px, auto);
   grid-template-areas:
     "vision babylon stack"
-    "control control atom"
+    "atom atom atom"
+    "control control control"
     "cal ai log";
   align-items: stretch;
 }
@@ -2005,6 +2006,68 @@ small,
     linear-gradient(145deg, rgba(12, 28, 42, 0.9), rgba(6, 14, 22, 0.94));
 }
 
+.vision-matrix-live {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 280px;
+  padding: 24px;
+  text-align: center;
+}
+
+.vision-matrix-live p {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 36ch;
+}
+
+.vision-matrix-live strong {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  color: #45ffb1;
+}
+
+.vision-matrix-live span {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #b5d6e8;
+}
+
+.vision-matrix-pulse {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(69, 255, 177, 0.45);
+  box-shadow:
+    0 0 28px rgba(69, 255, 177, 0.2),
+    inset 0 0 24px rgba(98, 233, 255, 0.12);
+  animation: vision-matrix-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vision-matrix-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+.neo-scanner--live::before {
+  border-color: rgba(69, 255, 177, 0.35);
+  animation-duration: 10s;
+}
+
 .atom-lab-canvas {
   width: 100%;
   min-height: 220px;
@@ -2124,8 +2187,8 @@ small,
     grid-template-areas:
       "vision vision"
       "babylon stack"
-      "control control"
       "atom atom"
+      "control control"
       "cal ai"
       "log log";
   }
