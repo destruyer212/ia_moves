@@ -1870,8 +1870,7 @@ small,
   grid-template-rows: auto auto minmax(200px, auto);
   grid-template-areas:
     "vision babylon stack"
-    "atom atom atom"
-    "control control control"
+    "atom control control"
     "cal ai log";
   align-items: stretch;
 }
@@ -2187,8 +2186,7 @@ small,
     grid-template-areas:
       "vision vision"
       "babylon stack"
-      "atom atom"
-      "control control"
+      "atom control"
       "cal ai"
       "log log";
   }
@@ -2212,10 +2210,50 @@ small,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .neo-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.neo-header {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-surface-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.app-surface-nav__btn {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(98, 233, 255, 0.35);
+  background: rgba(6, 16, 28, 0.7);
+  color: rgba(220, 252, 255, 0.9);
+  cursor: pointer;
+}
+
+.app-surface-nav__btn--on {
+  border-color: rgba(69, 255, 177, 0.55);
+  background: rgba(69, 255, 177, 0.12);
+}
+
+.app-surface-nav__btn--ghost {
+  border-style: dashed;
+  opacity: 0.88;
+}
+
+.app-surface-nav__btn:hover {
+  border-color: rgba(98, 233, 255, 0.65);
+}
+
+.handlab-launcher-hint {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  color: rgba(150, 200, 220, 0.65);
+}
 
   .babylon-neural-canvas {
     height: 200px;

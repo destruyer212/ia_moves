@@ -15,6 +15,7 @@ import {
 } from "./handLabUtils.js";
 import { useHandLabFusion } from "./useHandLabFusion.js";
 import { useHandLabInteraction } from "./useHandLabInteraction.js";
+import { useRenderGate } from "../../hooks/useRenderGate.js";
 
 import "./handLabStyles.css";
 
@@ -29,6 +30,7 @@ export function CinematicHandLab({
   health,
   atoms,
   trackedHands,
+  trackingRef,
   wsConnected,
   suggestedAction,
   triModeIndex,
@@ -36,15 +38,19 @@ export function CinematicHandLab({
   onOrganizeAtoms,
   onToggleCamera,
   answer,
+  hideChrome = false,
 }) {
   const fusionRef = useRef(null);
+  const stageRef = useRef(null);
+  const renderActive = useRenderGate(stageRef);
   const snapshotRef = useRef({});
   const thumbFlashUntilRef = useRef(0);
   const [perfTier, setPerfTier] = useState(() => loadPerfTier());
   const [showInit, setShowInit] = useState(true);
+  const [dockOpen, setDockOpen] = useState(false);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setShowInit(false), 3800);
+    const t = window.setTimeout(() => setShowInit(false), 1400);
     return () => window.clearTimeout(t);
   }, []);
 
@@ -74,17 +80,18 @@ export function CinematicHandLab({
     return nearbyNodes[0].label;
   }, [nearbyNodes]);
 
+  const live = trackingRef?.current;
   snapshotRef.current = {
     cameraOn: !!vision?.running,
-    hand: primaryHand,
-    trackedHands,
-    gesture,
-    atoms,
-    focal,
+    hand: live?.hand ?? primaryHand,
+    trackedHands: live?.trackedHands ?? trackedHands,
+    gesture: live?.gesture ?? gesture,
+    atoms: live?.atoms ?? atoms,
+    focal: live?.focal ?? focal,
     thumbFlashUntil: thumbFlashUntilRef.current,
   };
 
-  useHandLabFusion(fusionRef, snapshotRef, perfTier);
+  useHandLabFusion(fusionRef, snapshotRef, perfTier, renderActive, trackingRef);
 
   const coreOk = health === "ok";
   const aiActive = useMemo(() => {
@@ -97,16 +104,22 @@ export function CinematicHandLab({
   const floatLabel = fieldStateLabel(gesture?.name ?? "unknown");
 
   return (
-    <article className="handlab-root neo-card bento-card handlab-root--immersive">
-      <SystemStatusBar
-        visionRunning={!!vision?.running}
-        visionSource={vision?.source ?? "—"}
-        coreOk={coreOk}
-        aiActive={aiActive}
-        wsConnected={!!wsConnected}
-      />
+    <article
+      className={`handlab-root neo-card ${
+        hideChrome ? "handlab-root--fullscreen handlab-root--cinema" : "bento-card handlab-root--immersive"
+      }`}
+    >
+      {!hideChrome ? (
+        <SystemStatusBar
+          visionRunning={!!vision?.running}
+          visionSource={vision?.source ?? "—"}
+          coreOk={coreOk}
+          aiActive={aiActive}
+          wsConnected={!!wsConnected}
+        />
+      ) : null}
 
-      <div className="handlab-stage handlab-stage--immersive">
+      <div ref={stageRef} className="handlab-stage handlab-stage--immersive">
         <CameraLayer videoRef={videoRef} cameraOn={!!vision?.running} scanline>
           <canvas ref={fusionRef} className="handlab-fusion" aria-hidden="true" />
           <canvas ref={landmarkCanvasRef} className="handlab-landmarks" aria-hidden="true" />
@@ -116,7 +129,7 @@ export function CinematicHandLab({
               visionRunning={!!vision?.running}
               gesture={gesture}
               focusTitle={focusTitle}
-              onToggleCamera={onToggleCamera}
+              onToggleCamera={hideChrome ? undefined : onToggleCamera}
               triModeLabel={triModeLabel(triModeIndex)}
             />
 
@@ -154,32 +167,46 @@ export function CinematicHandLab({
         </CameraLayer>
       </div>
 
-      <div className="handlab-toolbar">
-        <label>
-          Densidad
-          <select
-            value={perfTier}
-            onChange={(e) => {
-              const v = e.target.value;
-              setPerfTier(v);
-              savePerfTier(v);
-            }}
-          >
-            <option value="low">LOW · 300</option>
-            <option value="medium">MED · 800</option>
-            <option value="cinematic">CINEMATIC · 1500+</option>
-          </select>
-        </label>
-        <button type="button" className="handlab-btn" onClick={onOrganizeAtoms}>
-          REORGANIZAR RED
+      {hideChrome ? (
+        <button
+          type="button"
+          className="handlab-dock-toggle"
+          onClick={() => setDockOpen((v) => !v)}
+          aria-expanded={dockOpen}
+        >
+          {dockOpen ? "OCULTAR PANEL" : "AJUSTES · LOG"}
         </button>
-        <span className="handlab-toolbar-hint handlab-mono">
-          {triModeLabel(triModeIndex)} · {floatLabel}
-          {focusTitle ? ` · ${focusTitle}` : ""}
-        </span>
-      </div>
+      ) : null}
 
-      <EventConsole events={events} />
+      <div className={`handlab-dock ${hideChrome ? "handlab-dock--overlay" : ""} ${dockOpen || !hideChrome ? "handlab-dock--open" : ""}`}>
+        <div className="handlab-toolbar">
+          <label>
+            Densidad
+            <select
+              value={perfTier}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPerfTier(v);
+                savePerfTier(v);
+              }}
+            >
+              <option value="turbo">TURBO · 320px · ultra fluido</option>
+              <option value="low">LOW · 70 px · 24 FPS</option>
+              <option value="medium">MED · 200 px · 30 FPS</option>
+              <option value="cinematic">CINEMATIC · 420 px · 45 FPS</option>
+            </select>
+          </label>
+          <button type="button" className="handlab-btn" onClick={onOrganizeAtoms}>
+            REORGANIZAR RED
+          </button>
+          <span className="handlab-toolbar-hint handlab-mono">
+            {triModeLabel(triModeIndex)} · {floatLabel}
+            {focusTitle ? ` · ${focusTitle}` : ""}
+          </span>
+        </div>
+
+        <EventConsole events={events} />
+      </div>
     </article>
   );
 }

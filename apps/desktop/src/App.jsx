@@ -1,12 +1,39 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CinematicHandLab } from "./features/handLab/CinematicHandLab.jsx";
+import { HandLabSurface } from "./features/handLab/HandLabSurface.jsx";
+import { SpatialLabSurface } from "./features/spatialLab/SpatialLabSurface.jsx";
 import { drawHandTrackingOverlay } from "./features/handLab/handLabDraw.js";
+import {
+  computeHandVelocities,
+  fluidFilterLandmarks,
+  getFluidDisplayHands,
+} from "./features/handLab/handMotion.js";
+import { focalPointFromHands, PERF_STORAGE_KEY } from "./features/handLab/handLabUtils.js";
+import { getInferenceMaxWidth } from "./features/handLab/handLabPerf.js";
+import {
+  getSurfaceFromLocation,
+  isDedicatedHandLabWindow,
+  navigateToHandLab,
+  navigateToSpatialLab,
+  openHandLabWindow,
+  SURFACE_HAND_LAB,
+  SURFACE_SPATIAL_LAB,
+} from "./surfaceRouting.js";
 
 const API_URL = "http://127.0.0.1:8766";
 const MOUSE_SETTINGS_STORAGE_KEY = "ia_moves_mouse_settings_v2";
 const HAND_MODEL_URL = "/models/hand_landmarker.task";
+
+function readPerfTier() {
+  try {
+    const v = window.localStorage.getItem(PERF_STORAGE_KEY);
+    if (v) return v;
+  } catch {
+    /* ignore */
+  }
+  return "turbo";
+}
 
 const gestureActions = {
   open_palm: "open_start",
@@ -109,6 +136,22 @@ export function App() {
   const workerBootTimerRef = useRef(null);
   const frameBusyRef = useRef(false);
   const rafRef = useRef(null);
+  const overlayRafRef = useRef(null);
+  const lastVideoPumpRef = useRef(0);
+  const pendingVideoPumpRef = useRef(false);
+  const lastVideoMediaTimeRef = useRef(0);
+  const isHandLabSurfaceRef = useRef(false);
+  const isSpatialLabSurfaceRef = useRef(false);
+  const atomsRef = useRef([]);
+  const handLabTrackingRef = useRef({
+    cameraOn: false,
+    hand: null,
+    trackedHands: [],
+    gesture: { name: "unknown", confidence: 0.1, active: false, stale: false },
+    atoms: [],
+    focal: { x: 0.5, y: 0.52 },
+  });
+  const clientFpsRef = useRef({ frames: 0, lastAt: 0, value: 0 });
   const wsRef = useRef(null);
   const pointerSendRef = useRef({ lastAt: 0, x: 0, y: 0 });
   const fallbackVisionRef = useRef({
@@ -157,6 +200,7 @@ export function App() {
   const [atoms, setAtoms] = useState(() => createAtomField());
   const [handLabTriMode, setHandLabTriMode] = useState(1);
   const [wsConnected, setWsConnected] = useState(false);
+  const [surface, setSurface] = useState(() => getSurfaceFromLocation());
   const handLabTriModeRef = useRef(1);
   const trackedHandsRef = useRef([]);
   const mouseAssistRef = useRef({ armed: false, centerFrames: 0, notice: "Mano al centro para enganchar mouse" });
@@ -212,6 +256,26 @@ export function App() {
   }, [vision.running]);
 
   useEffect(() => {
+    const onHash = () => setSurface(getSurfaceFromLocation());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const isHandLabSurface = surface === SURFACE_HAND_LAB;
+  const isSpatialLabSurface = surface === SURFACE_SPATIAL_LAB;
+  const isCreativeSurface = isHandLabSurface || isSpatialLabSurface;
+
+  useEffect(() => {
+    isHandLabSurfaceRef.current = isCreativeSurface;
+    isSpatialLabSurfaceRef.current = isSpatialLabSurface;
+  }, [isCreativeSurface, isSpatialLabSurface]);
+
+  useEffect(() => {
+    atomsRef.current = atoms;
+    handLabTrackingRef.current.atoms = atoms;
+  }, [atoms]);
+
+  useEffect(() => {
     checkHealth();
     checkControl();
     loadStoredMouseSettings();
@@ -235,6 +299,21 @@ export function App() {
     }, 800);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!isCreativeSurface) return undefined;
+    checkHealth();
+    const timer = window.setInterval(checkHealth, 5000);
+    return () => window.clearInterval(timer);
+  }, [isCreativeSurface]);
+
+  useEffect(() => {
+    if (!isSpatialLabSurface) return;
+    if (controlRef.current.mouse_enabled) {
+      setControlMode("commands");
+      pushEvent("Spatial Sandbox: modo mouse del SO desactivado.");
+    }
+  }, [isSpatialLabSurface]);
 
   useEffect(() => {
     if (control.mouse_enabled || !autoMode || !gesture.active || gesture.stale || gesture.confidence < 0.82) return;
@@ -663,9 +742,9 @@ export function App() {
         },
         runningMode: "VIDEO",
         numHands: 2,
-        minHandDetectionConfidence: 0.32,
-        minHandPresenceConfidence: 0.3,
-        minTrackingConfidence: 0.3,
+        minHandDetectionConfidence: 0.25,
+        minHandPresenceConfidence: 0.25,
+        minTrackingConfidence: 0.25,
       });
       fallback.ready = true;
       setVision((current) => ({ ...current, error: null, source: "main-cpu-fallback" }));
@@ -690,7 +769,13 @@ export function App() {
     let nextGesture = { name: "unknown", confidence: 0.1, active: false, stale: false };
 
     if (detected) {
-      hand = smoothLandmarks(fallback.previousHand, detected, 0.38);
+      const dt = Math.max((now - (fallback.lastSeenAt || now)) / 1000, 1 / 60);
+      hand = fluidFilterLandmarks(
+        fallback.previousHand,
+        detected,
+        dt,
+        isHandLabSurfaceRef.current && !isSpatialLabSurfaceRef.current,
+      );
       fallback.previousHand = hand;
       fallback.lastSeenAt = now;
       nextGesture = classifyHand(hand);
@@ -708,9 +793,11 @@ export function App() {
       fallback.previousGesture = { name: "unknown", confidence: 0.1, active: false, stale: false };
     }
 
+    const hands = hand ? [hand, ...(detectedHands[1] ? [detectedHands[1]] : [])].slice(0, 2) : [];
+    syncHandLabTracking(hand, hands, nextGesture);
     setGesture(nextGesture);
-    setTrackedHands(detectedHands);
-    updateAtomLab(detectedHands);
+    setTrackedHands(hands);
+    updateAtomLab(hands);
     setPerf((current) => ({ ...current, inferMs: 0, source: "main-cpu-fallback" }));
     setVision((current) => (current.source === "main-cpu-fallback" ? current : { ...current, source: "main-cpu-fallback" }));
     drawOverlay(hand, nextGesture);
@@ -802,9 +889,10 @@ export function App() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 960 },
-          height: { ideal: 540 },
-          frameRate: { ideal: 60, max: 60 },
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 60, min: 24 },
+          facingMode: "user",
           deviceId: cameras[cameraIndex]?.deviceId ? { exact: cameras[cameraIndex].deviceId } : undefined,
         },
         audio: false,
@@ -843,7 +931,8 @@ export function App() {
 
       pointFramesRef.current = 0;
       frameBusyRef.current = false;
-      rafRef.current = window.requestAnimationFrame(pumpVideoFrame);
+      scheduleVideoPump();
+      startOverlayPaintLoop();
       pushEvent("Camara activa. Tracking listo para arrancar.");
     } catch (error) {
       visionRunningRef.current = false;
@@ -858,6 +947,7 @@ export function App() {
     releasePinch();
     if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+    stopOverlayPaintLoop();
     frameBusyRef.current = false;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -877,43 +967,149 @@ export function App() {
     if (announce) pushEvent("Vision detenida.");
   }
 
-  function pumpVideoFrame() {
-    if (!visionRunningRef.current || !videoRef.current) return;
-    if (videoRef.current.readyState < 2) {
-      rafRef.current = window.requestAnimationFrame(pumpVideoFrame);
+  function scheduleVideoPump() {
+    if (!visionRunningRef.current) return;
+    const video = videoRef.current;
+    if (video && typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback((_now, metadata) => {
+        pumpVideoFrameCore(metadata);
+        scheduleVideoPump();
+      });
       return;
     }
+    rafRef.current = window.requestAnimationFrame(() => {
+      pumpVideoFrameCore(null);
+      scheduleVideoPump();
+    });
+  }
+
+  function captureInferenceBitmap(video) {
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+    if (!vw || !vh) return createImageBitmap(video);
+    const maxW = isHandLabSurfaceRef.current ? getInferenceMaxWidth(readPerfTier()) : 640;
+    if (vw <= maxW) return createImageBitmap(video);
+    const scale = maxW / vw;
+    return createImageBitmap(video, {
+      resizeWidth: Math.round(vw * scale),
+      resizeHeight: Math.round(vh * scale),
+      resizeQuality: "low",
+    });
+  }
+
+  function pumpVideoFrameCore(metadata) {
+    if (!visionRunningRef.current || !videoRef.current) return;
+    if (document.visibilityState === "hidden") return;
+
+    const video = videoRef.current;
+    if (video.readyState < 2) return;
+
+    const mediaTimeMs =
+      metadata?.mediaTime != null ? metadata.mediaTime * 1000 : performance.now();
+    lastVideoMediaTimeRef.current = mediaTimeMs;
 
     if (!workerReadyRef.current && fallbackVisionRef.current.ready) {
-      processFallbackFrame(videoRef.current, performance.now());
-      rafRef.current = window.requestAnimationFrame(pumpVideoFrame);
+      processFallbackFrame(video, mediaTimeMs);
       return;
     }
 
-    if (!workerReadyRef.current || frameBusyRef.current) {
-      rafRef.current = window.requestAnimationFrame(pumpVideoFrame);
+    if (!workerReadyRef.current) return;
+
+    if (frameBusyRef.current) {
+      pendingVideoPumpRef.current = true;
       return;
+    }
+
+    const useRvfc = typeof video.requestVideoFrameCallback === "function";
+    if (!useRvfc) {
+      const now = performance.now();
+      const pumpGap = isHandLabSurfaceRef.current ? 0 : 33;
+      if (pumpGap > 0 && now - lastVideoPumpRef.current < pumpGap) return;
+      lastVideoPumpRef.current = now;
     }
 
     frameBusyRef.current = true;
-    createImageBitmap(videoRef.current)
+    captureInferenceBitmap(video)
       .then((bitmap) => {
         workerRef.current?.postMessage(
           {
             type: "frame",
             bitmap,
             timestamp: performance.now(),
+            mediaTimeMs,
             antiJitter: antiJitterRef.current,
+            fastTracking: isHandLabSurfaceRef.current && !isSpatialLabSurfaceRef.current,
           },
           [bitmap],
         );
       })
       .catch(() => {
         frameBusyRef.current = false;
-      })
-      .finally(() => {
-        rafRef.current = window.requestAnimationFrame(pumpVideoFrame);
+        pendingVideoPumpRef.current = false;
       });
+  }
+
+  function flushPendingVideoPump() {
+    if (!pendingVideoPumpRef.current || !visionRunningRef.current) return;
+    pendingVideoPumpRef.current = false;
+    pumpVideoFrameCore({ mediaTime: lastVideoMediaTimeRef.current / 1000 });
+  }
+
+  function startOverlayPaintLoop() {
+    stopOverlayPaintLoop();
+    const tick = (ts) => {
+      if (!visionRunningRef.current) return;
+      overlayRafRef.current = window.requestAnimationFrame(tick);
+      if (document.visibilityState === "hidden") return;
+
+      const bucket = clientFpsRef.current;
+      bucket.frames += 1;
+      if (!bucket.lastAt) bucket.lastAt = ts;
+      if (ts - bucket.lastAt >= 1000) {
+        bucket.value = bucket.frames;
+        bucket.frames = 0;
+        bucket.lastAt = ts;
+      }
+
+      const hands = getFluidDisplayHands(handLabTrackingRef.current);
+      const hand = hands[0] ?? trackedHandsRef.current[0] ?? null;
+      drawOverlay(hand, gestureRef.current, hands);
+    };
+    overlayRafRef.current = window.requestAnimationFrame(tick);
+  }
+
+  function stopOverlayPaintLoop() {
+    if (overlayRafRef.current) window.cancelAnimationFrame(overlayRafRef.current);
+    overlayRafRef.current = null;
+    clientFpsRef.current = { frames: 0, lastAt: 0, value: 0 };
+  }
+
+  function syncHandLabTracking(hand, hands, nextGesture, handednesses = []) {
+    const now = performance.now();
+    const prev = handLabTrackingRef.current.trackedHands ?? [];
+    const packetDt = handLabTrackingRef.current.lastPacketAt
+      ? now - handLabTrackingRef.current.lastPacketAt
+      : 32;
+    const velocities = computeHandVelocities(prev, hands, packetDt);
+
+    trackedHandsRef.current = hands;
+    gestureRef.current = nextGesture;
+    handLabTrackingRef.current = {
+      cameraOn: visionRunningRef.current,
+      hand,
+      trackedHands: hands,
+      prevHands: prev,
+      lastPacketAt: now,
+      packetDt,
+      velocities,
+      gesture: nextGesture,
+      handednesses,
+      atoms: atomsRef.current,
+      focal: focalPointFromHands(
+        getFluidDisplayHands({ trackedHands: hands, prevHands: prev, lastPacketAt: now, packetDt, velocities }),
+        nextGesture,
+      ),
+    };
   }
 
   function onWorkerMessage(event) {
@@ -943,6 +1139,7 @@ export function App() {
 
     if (message.type === "error") {
       frameBusyRef.current = false;
+      flushPendingVideoPump();
       workerReadyRef.current = false;
       setVision((current) => ({
         ...current,
@@ -957,25 +1154,30 @@ export function App() {
     if (message.type !== "result") return;
 
     frameBusyRef.current = false;
+    flushPendingVideoPump();
     const nextGesture = message.gesture ?? { name: "unknown", confidence: 0.1, active: false, stale: false };
     const hand = message.hand ?? null;
     const hands = message.hands ?? (hand ? [hand] : []);
 
     setGesture(nextGesture);
-    setPerf({
-      fps: Math.round(message.fps ?? 0),
-      inferMs: Number((message.inferMs ?? 0).toFixed(1)),
-      pointerHz: Math.round(message.pointerHz ?? 0),
-      staleFrames: message.staleFrames ?? 0,
-    });
     setVision((current) => (current.error ? { ...current, error: null } : current));
     if (message.source) {
       setVision((current) => (current.source === message.source ? current : { ...current, source: message.source }));
     }
 
+    syncHandLabTracking(hand, hands, nextGesture, message.handednesses ?? []);
     setTrackedHands(hands);
     updateAtomLab(hands);
     drawOverlay(hand, nextGesture);
+
+    const reportedFps = Math.round(message.fps ?? 0);
+    const overlayFps = clientFpsRef.current.value;
+    setPerf({
+      fps: reportedFps > 0 ? reportedFps : overlayFps,
+      inferMs: Number((message.inferMs ?? 0).toFixed(1)),
+      pointerHz: Math.round(message.pointerHz ?? 0),
+      staleFrames: message.staleFrames ?? 0,
+    });
 
     const pointerArmed = updatePointerReacquire(hand, nextGesture);
 
@@ -999,7 +1201,8 @@ export function App() {
   function sendPointer(point) {
     const now = performance.now();
     const last = pointerSendRef.current;
-    if (now - last.lastAt < 16) {
+    const pointerGap = isHandLabSurfaceRef.current ? 8 : 16;
+    if (now - last.lastAt < pointerGap) {
       return;
     }
 
@@ -1092,7 +1295,7 @@ export function App() {
     }).catch(() => {});
   }
 
-  function drawOverlay(hand, nextGesture) {
+  function drawOverlay(hand, nextGesture, handsOverride) {
     const canvas = landmarkCanvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
@@ -1102,11 +1305,11 @@ export function App() {
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
 
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!ctx) return;
-    const hands = trackedHandsRef.current?.length
-      ? trackedHandsRef.current
-      : (hand ? [hand] : []);
+    const hands = handsOverride?.length
+      ? handsOverride
+      : (trackedHandsRef.current?.length ? trackedHandsRef.current : (hand ? [hand] : []));
     drawHandTrackingOverlay(ctx, width, height, {
       hand,
       hands,
@@ -1201,10 +1404,60 @@ export function App() {
     pushEvent("Atomos organizados en red.");
   }
 
+  const handLabCommonProps = {
+    videoRef,
+    landmarkCanvasRef,
+    vision,
+    gesture,
+    perf,
+    control,
+    events,
+    health,
+    atoms,
+    trackedHands,
+    trackingRef: handLabTrackingRef,
+    wsConnected,
+    suggestedAction: handLabSuggestedAction,
+    triModeIndex: handLabTriMode,
+    onAdvanceTriMode: advanceHandLabTriMode,
+    onOrganizeAtoms: organizeAtoms,
+    onToggleCamera: () => (vision.running ? stopVision() : startVision()),
+    answer,
+  };
+
+  const spatialLabProps = {
+    videoRef,
+    landmarkCanvasRef,
+    vision,
+    gesture,
+    perf,
+    trackingRef: handLabTrackingRef,
+    onToggleCamera: () => (vision.running ? stopVision() : startVision()),
+  };
+
+  if (isSpatialLabSurface) {
+    return (
+      <main className="shell neo-shell shell--spatial-only">
+        <SpatialLabSurface {...spatialLabProps} />
+      </main>
+    );
+  }
+
+  if (isHandLabSurface) {
+    return (
+      <main className="shell neo-shell shell--handlab-only">
+        <HandLabSurface
+          {...handLabCommonProps}
+          isStandaloneWindow={isDedicatedHandLabWindow()}
+        />
+      </main>
+    );
+  }
+
   return (
-    <main className="shell neo-shell">
+    <main className="shell neo-shell shell--deck-only">
       <Suspense fallback={null}>
-        <HudScene3D intensity={vision.running ? 1 : 0.58} />
+        <HudScene3D intensity={vision.running ? 0.45 : 0.58} active={!vision.running} />
       </Suspense>
       <div className="hud-cosmos" aria-hidden="true">
         <span className="ring ring-a" />
@@ -1273,6 +1526,20 @@ export function App() {
           <p className="eyebrow">Jessi Stark OS / IA Moves</p>
           <h1>Neural Gesture Deck</h1>
         </div>
+        <nav className="app-surface-nav" aria-label="Superficies">
+          <button type="button" className="app-surface-nav__btn app-surface-nav__btn--on">
+            Command Deck
+          </button>
+          <button type="button" className="app-surface-nav__btn" onClick={() => navigateToHandLab()}>
+            Neural Field Lab
+          </button>
+          <button type="button" className="app-surface-nav__btn" onClick={() => navigateToSpatialLab()}>
+            Spatial Sandbox
+          </button>
+          <button type="button" className="app-surface-nav__btn app-surface-nav__btn--ghost" onClick={() => openHandLabWindow()}>
+            Ventana aparte
+          </button>
+        </nav>
         <div className="neo-badges">
           <div className={`status ${health === "ok" ? "online" : "offline"}`}>
             <span />
@@ -1323,8 +1590,8 @@ export function App() {
                 <div className="vision-matrix-live" role="status">
                   <span className="vision-matrix-pulse" aria-hidden="true" />
                   <p>
-                    <strong>FEED EN HAND LAB</strong>
-                    <span>Tracking activo en el panel inferior · Cinematic Hand Control Lab</span>
+                    <strong>FEED EN NEURAL FIELD LAB</strong>
+                    <span>Abre el laboratorio dedicado (botón Neural Field Lab o ventana aparte)</span>
                   </p>
                 </div>
               ) : (
@@ -1435,25 +1702,44 @@ export function App() {
         </div>
 
         <div className="bento-tile bento-atom">
-          <CinematicHandLab
-            videoRef={videoRef}
-            landmarkCanvasRef={landmarkCanvasRef}
-            vision={vision}
-            gesture={gesture}
-            perf={perf}
-            control={control}
-            events={events}
-            health={health}
-            atoms={atoms}
-            trackedHands={trackedHands}
-            wsConnected={wsConnected}
-            suggestedAction={handLabSuggestedAction}
-            triModeIndex={handLabTriMode}
-            onAdvanceTriMode={advanceHandLabTriMode}
-            onOrganizeAtoms={organizeAtoms}
-            onToggleCamera={() => (vision.running ? stopVision() : startVision())}
-            answer={answer}
-          />
+          <article className="hud-panel neo-card handlab-launcher-card">
+            <span className="bento-kicker">NEURAL FIELD LAB</span>
+            <h3>Estación gestual en pantalla dedicada</h3>
+            <p>
+              Cámara, red neural, landmarks y HUD no comparten el scroll del Command Deck.
+              Ábrelo a pantalla completa o en un monitor secundario.
+            </p>
+            <div className="handlab-launcher-actions">
+              <button type="button" className="handlab-btn handlab-btn--cam" onClick={() => navigateToHandLab()}>
+                ABRIR LABORATORIO
+              </button>
+              <button type="button" className="handlab-btn" onClick={() => openHandLabWindow()}>
+                VENTANA APARTE
+              </button>
+            </div>
+            <p className="handlab-launcher-hint handlab-mono">
+              Gesto: {gesture.name} · {Math.round((gesture.confidence ?? 0) * 100)}% · Cámara {vision.running ? "ON" : "OFF"}
+            </p>
+          </article>
+        </div>
+
+        <div className="bento-tile bento-atom">
+          <article className="hud-panel neo-card handlab-launcher-card spatial-launcher-card">
+            <span className="bento-kicker">SPATIAL SANDBOX · 3D</span>
+            <h3>Cinematic Spatial Control Lab</h3>
+            <p>
+              Rapier physics, bloom, raycast de nodos, planeta orbital, 1400 partículas y escena guardada en local.
+              Sin mover el cursor de Windows.
+            </p>
+            <div className="handlab-launcher-actions">
+              <button type="button" className="handlab-btn handlab-btn--cam" onClick={() => navigateToSpatialLab()}>
+                ABRIR SPATIAL LAB
+              </button>
+            </div>
+            <p className="handlab-launcher-hint handlab-mono">
+              Motor: Vision → Gesture → Physics → R3F · HCI espacial
+            </p>
+          </article>
         </div>
 
         <div className="bento-tile bento-control">

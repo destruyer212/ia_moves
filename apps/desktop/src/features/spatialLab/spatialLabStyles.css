@@ -1,0 +1,314 @@
+/* Cinematic Spatial Control Lab — volumetric UI */
+
+/* Sin cursor del sistema en el lienzo 3D — solo manos; botones conservan puntero */
+.shell--spatial-only,
+.spatial-surface,
+.spatial-surface__stage,
+.spatial-canvas-host,
+.spatial-canvas,
+.spatial-canvas canvas,
+.spatial-hud,
+.spatial-pip {
+  cursor: none !important;
+}
+
+.spatial-btn,
+.spatial-surface__actions,
+.spatial-surface__actions * {
+  cursor: pointer !important;
+}
+
+.spatial-surface {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: radial-gradient(ellipse 120% 80% at 50% 0%, #0c1830 0%, #010208 55%, #000 100%);
+  overflow: hidden;
+}
+
+.spatial-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(98, 233, 255, 0.015) 2px,
+    rgba(98, 233, 255, 0.015) 4px
+  );
+  opacity: 0.5;
+}
+
+.spatial-surface__bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(2, 8, 14, 0.92), transparent);
+  pointer-events: none;
+}
+
+.spatial-surface__bar h1 {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+  color: #e8fbff;
+  letter-spacing: 0.06em;
+}
+
+.spatial-surface__kicker {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  color: rgba(98, 233, 255, 0.75);
+}
+
+.spatial-surface__actions {
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.spatial-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  padding: 8px 14px;
+  border: 1px solid rgba(98, 233, 255, 0.4);
+  border-radius: 6px;
+  background: rgba(4, 14, 24, 0.85);
+  color: #d8f8ff;
+  cursor: pointer;
+}
+
+.spatial-btn--cam {
+  border-color: rgba(69, 255, 177, 0.55);
+  color: #b8ffe8;
+}
+
+.spatial-surface__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.spatial-canvas-host,
+.spatial-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.spatial-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: rgba(150, 220, 240, 0.7);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.14em;
+}
+
+.spatial-hud {
+  position: absolute;
+  top: 72px;
+  left: 14px;
+  z-index: 12;
+  max-width: min(320px, 38vw);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spatial-hud__brand {
+  padding: 12px 14px;
+  border-left: 2px solid rgba(168, 85, 247, 0.75);
+  background: linear-gradient(135deg, rgba(8, 16, 32, 0.82), rgba(4, 8, 18, 0.65));
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 40px rgba(98, 233, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.spatial-hud__title {
+  margin: 6px 0 0;
+  font-size: 1rem;
+  color: #f0fcff;
+}
+
+.spatial-hud__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.68rem;
+  color: rgba(160, 210, 230, 0.75);
+}
+
+.spatial-hud__kicker {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.52rem;
+  letter-spacing: 0.18em;
+  color: rgba(98, 233, 255, 0.7);
+}
+
+.spatial-hud__mode {
+  padding: 10px 12px;
+  background: linear-gradient(160deg, rgba(12, 24, 48, 0.78), rgba(4, 10, 22, 0.85));
+  border: 1px solid rgba(98, 233, 255, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.spatial-hud__chip {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.52rem;
+  letter-spacing: 0.16em;
+  color: rgba(98, 233, 255, 0.8);
+}
+
+.spatial-hud__chip--amber {
+  color: rgba(255, 200, 120, 0.9);
+}
+
+.spatial-hud__mode-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: #45ffb1;
+}
+
+.spatial-hud__hint-line {
+  margin: 8px 0 0;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: rgba(180, 230, 245, 0.88);
+}
+
+.spatial-hud__telemetry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+  font-size: 0.68rem;
+}
+
+.spatial-hud__telemetry dt {
+  color: rgba(140, 190, 210, 0.7);
+  font-family: var(--font-mono, monospace);
+}
+
+.spatial-hud__telemetry dd {
+  margin: 2px 0 0;
+  color: #e8fbff;
+  font-family: var(--font-mono, monospace);
+}
+
+.spatial-hud__help {
+  padding: 10px 12px;
+  background: rgba(4, 10, 18, 0.65);
+  border-radius: 8px;
+  font-size: 0.65rem;
+  line-height: 1.45;
+  color: rgba(180, 220, 235, 0.85);
+}
+
+.spatial-hud__help ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+}
+
+.spatial-hud__note {
+  margin: 10px 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  color: rgba(69, 255, 177, 0.85);
+}
+
+.spatial-pip {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  z-index: 15;
+  width: 200px;
+  height: 112px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(98, 233, 255, 0.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  background: #000;
+}
+
+.spatial-pip__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  opacity: 0.2;
+}
+
+.spatial-pip__video--live {
+  opacity: 0.85;
+}
+
+.spatial-pip__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+.spatial-pip__hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  text-align: center;
+  font-size: 0.58rem;
+  font-family: var(--font-mono, monospace);
+  color: rgba(200, 240, 255, 0.9);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.shell--spatial-only.neo-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+}
+
+.shell--spatial-only.neo-shell::after {
+  display: none;
+}
+
+.spatial-save-toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  padding: 8px 16px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: #b8ffe8;
+  background: rgba(4, 20, 16, 0.9);
+  border: 1px solid rgba(69, 255, 177, 0.45);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.spatial-hud__pick {
+  color: #ffc857 !important;
+}

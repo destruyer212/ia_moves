@@ -1,3 +1,8 @@
+import {
+  PERF_PARTICLES,
+  getParticleCount as getParticleCountPerf,
+} from "./handLabPerf.js";
+
 /** MediaPipe hand topology — same as legacy App.jsx */
 export const HAND_CONNECTIONS = [
   [0, 1], [1, 2], [2, 3], [3, 4],
@@ -10,11 +15,12 @@ export const HAND_CONNECTIONS = [
 
 export const PERF_STORAGE_KEY = "ia_moves_hand_lab_perf_v1";
 
-export const PERF_PRESETS = {
-  low: 300,
-  medium: 800,
-  cinematic: 1500,
-};
+/** @deprecated usar handLabPerf — mantenido para localStorage */
+export const PERF_PRESETS = PERF_PARTICLES;
+
+export function getParticleCount(tier) {
+  return getParticleCountPerf(tier);
+}
 
 /** Etiquetas estilo red de conocimiento (inspiración AR, sin copiar textos de referencia) */
 export const NEURAL_NODE_LABELS = [
@@ -38,23 +44,19 @@ export const NEURAL_NODE_LABELS = [
   "Sync WS",
 ];
 
-export function getParticleCount(tier) {
-  return PERF_PRESETS[tier] ?? PERF_PRESETS.medium;
-}
-
 export function loadPerfTier() {
   try {
     const v = window.localStorage.getItem(PERF_STORAGE_KEY);
-    if (v && PERF_PRESETS[v]) return v;
+    if (v && PERF_PARTICLES[v]) return v;
   } catch {
     /* ignore */
   }
-  return "medium";
+  return "turbo";
 }
 
 export function savePerfTier(tier) {
   try {
-    if (PERF_PRESETS[tier]) window.localStorage.setItem(PERF_STORAGE_KEY, tier);
+    if (PERF_PARTICLES[tier]) window.localStorage.setItem(PERF_STORAGE_KEY, tier);
   } catch {
     /* ignore */
   }

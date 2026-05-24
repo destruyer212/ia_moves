@@ -1,4 +1,5 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { fluidFilterLandmarks, nextMonotonicMediaTs, smoothLandmarks } from "./features/handLab/handMotion.js";
 
 let handLandmarker = null;
 let scratchCanvas = null;
@@ -7,6 +8,7 @@ let previousHand = null;
 let previousHands = [];
 let previousGesture = { name: "unknown", confidence: 0.1, active: false, stale: false };
 let lastSeenAt = 0;
+let lastMediaTimestampMs = 0;
 let windowStartedAt = performance.now();
 let frameCount = 0;
 let inferTotalMs = 0;
@@ -16,25 +18,23 @@ let currentSource = "booting";
 let resolverPromise = null;
 let initPromise = null;
 let initConfig = { wasmPath: "", modelPath: "", forceCpu: false };
-const HAND_STALE_HOLD_MS = 650;
+let processing = false;
+let queuedFrame = null;
+
+const HAND_STALE_HOLD_MS = 420;
 const INIT_TIMEOUT_MS = 15000;
+
+const LANDMARKER_OPTS = {
+  runningMode: "VIDEO",
+  numHands: 2,
+  minHandDetectionConfidence: 0.25,
+  minHandPresenceConfidence: 0.25,
+  minTrackingConfidence: 0.25,
+};
 
 function smoothingAlpha(cutoff, dt) {
   const tau = 1 / (2 * Math.PI * cutoff);
   return 1 / (1 + tau / Math.max(dt, 1e-4));
-}
-
-function smoothLandmarks(prev, next, alpha = 0.34) {
-  if (!next) return prev;
-  if (!prev || prev.length !== next.length) {
-    return next.map((point) => ({ ...point }));
-  }
-
-  return next.map((point, index) => ({
-    x: prev[index].x + ((point.x - prev[index].x) * alpha),
-    y: prev[index].y + ((point.y - prev[index].y) * alpha),
-    z: (prev[index].z ?? 0) + (((point.z ?? 0) - (prev[index].z ?? 0)) * alpha),
-  }));
 }
 
 function applyOneEuroFilter(prev, next, dt) {
@@ -45,7 +45,7 @@ function applyOneEuroFilter(prev, next, dt) {
     const dx = (point.x - previous.x) / Math.max(dt, 1e-4);
     const dy = (point.y - previous.y) / Math.max(dt, 1e-4);
     const speed = Math.hypot(dx, dy);
-    const cutoff = 1.1 + (0.03 * speed);
+    const cutoff = 1.4 + (0.04 * speed);
     const alpha = smoothingAlpha(cutoff, dt);
     return {
       x: previous.x + ((point.x - previous.x) * alpha),
@@ -53,6 +53,16 @@ function applyOneEuroFilter(prev, next, dt) {
       z: (previous.z ?? 0) + (((point.z ?? 0) - (previous.z ?? 0)) * alpha),
     };
   });
+}
+
+function filterLandmarks(previous, landmarks, dt, antiJitter, fastTracking) {
+  if (fastTracking) {
+    return fluidFilterLandmarks(previous, landmarks, dt, true);
+  }
+  if (antiJitter) {
+    return applyOneEuroFilter(previous, landmarks, dt);
+  }
+  return smoothLandmarks(previous, landmarks, 0.34);
 }
 
 function classifyHand(points) {
@@ -148,14 +158,14 @@ async function createLandmarker(delegate) {
     baseOptions.delegate = "GPU";
   }
 
-  const next = await withTimeout(HandLandmarker.createFromOptions(resolver, {
-    baseOptions,
-    runningMode: "VIDEO",
-    numHands: 2,
-    minHandDetectionConfidence: 0.32,
-    minHandPresenceConfidence: 0.3,
-    minTrackingConfidence: 0.3,
-  }), INIT_TIMEOUT_MS, `${delegate.toLowerCase()}_landmarker`);
+  const next = await withTimeout(
+    HandLandmarker.createFromOptions(resolver, {
+      baseOptions,
+      ...LANDMARKER_OPTS,
+    }),
+    INIT_TIMEOUT_MS,
+    `${delegate.toLowerCase()}_landmarker`,
+  );
   handLandmarker = next;
   currentSource = sourceFromDelegate(delegate);
   resetTrackingState();
@@ -200,12 +210,13 @@ function resetTrackingState() {
   previousHands = [];
   previousGesture = { name: "unknown", confidence: 0.1, active: false, stale: false };
   lastSeenAt = 0;
+  lastMediaTimestampMs = 0;
   staleFrames = 0;
 }
 
-function inferFromCanvas(timestamp, antiJitter) {
+function inferFromCanvas(mediaTimestampMs, antiJitter, fastTracking = false) {
   const startedAt = performance.now();
-  const result = handLandmarker.detectForVideo(scratchCanvas, timestamp);
+  const result = handLandmarker.detectForVideo(scratchCanvas, mediaTimestampMs);
   const inferMs = performance.now() - startedAt;
   const detectedHands = result.landmarks ?? [];
   const detected = detectedHands[0] ?? null;
@@ -220,15 +231,11 @@ function inferFromCanvas(timestamp, antiJitter) {
       .slice(0, 2)
       .map((landmarks, index) => {
         const previous = previousHands[index] ?? null;
-        return antiJitter
-          ? applyOneEuroFilter(previous, landmarks, dt)
-          : smoothLandmarks(previous, landmarks, 0.34);
+        return filterLandmarks(previous, landmarks, dt, antiJitter, fastTracking);
       });
     previousHands = hands;
 
-    const filtered = antiJitter
-      ? applyOneEuroFilter(previousHand, detected, dt)
-      : smoothLandmarks(previousHand, detected, 0.34);
+    const filtered = filterLandmarks(previousHand, detected, dt, antiJitter, fastTracking);
     previousHand = filtered;
     lastSeenAt = now;
     hand = filtered;
@@ -239,7 +246,7 @@ function inferFromCanvas(timestamp, antiJitter) {
     hand = previousHand;
     gesture = {
       ...previousGesture,
-      confidence: Math.max(0.38, (previousGesture.confidence ?? 0.8) - ((now - lastSeenAt) * 0.0007)),
+      confidence: Math.max(0.38, (previousGesture.confidence ?? 0.8) - ((now - lastSeenAt) * 0.0009)),
       active: true,
       stale: true,
     };
@@ -247,11 +254,16 @@ function inferFromCanvas(timestamp, antiJitter) {
     resetTrackingState();
   }
 
+  const handednesses = (result.handednesses ?? []).map(
+    (h) => h?.[0]?.categoryName ?? "",
+  );
+
   const perf = perfSnapshot(inferMs);
   return {
     type: "result",
     hand,
     hands: previousHands,
+    handednesses,
     gesture,
     fps: perf.fps,
     inferMs: perf.inferMs,
@@ -259,6 +271,73 @@ function inferFromCanvas(timestamp, antiJitter) {
     pointerHz: perf.fps,
     source: currentSource,
   };
+}
+
+function closeBitmap(bitmap) {
+  try {
+    bitmap?.close?.();
+  } catch {
+    // no-op
+  }
+}
+
+async function processQueuedFrame(data) {
+  const bitmap = data.bitmap;
+  try {
+    await ensureInitialized();
+    if (!scratchCanvas || scratchCanvas.width !== bitmap.width || scratchCanvas.height !== bitmap.height) {
+      scratchCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      scratchContext = scratchCanvas.getContext("2d", { alpha: false, desynchronized: true });
+    }
+
+    scratchContext.drawImage(bitmap, 0, 0, scratchCanvas.width, scratchCanvas.height);
+    const incomingTs = data.mediaTimeMs ?? data.timestamp;
+    lastMediaTimestampMs = nextMonotonicMediaTs(lastMediaTimestampMs, incomingTs);
+
+    let payload;
+    try {
+      payload = inferFromCanvas(lastMediaTimestampMs, data.antiJitter, data.fastTracking === true);
+    } catch (error) {
+      if (currentSource === "worker-gpu") {
+        self.postMessage({
+          type: "engine",
+          source: "worker-init",
+          error: error.message,
+          message: "Error GPU en runtime, cambiando a fallback CPU.",
+        });
+        await createLandmarker("CPU");
+        payload = inferFromCanvas(lastMediaTimestampMs, data.antiJitter, data.fastTracking === true);
+      } else {
+        throw error;
+      }
+    }
+    self.postMessage(payload);
+  } catch (error) {
+    handLandmarker = null;
+    currentSource = "worker-init";
+    self.postMessage({ type: "error", error: error.message, source: currentSource });
+  } finally {
+    closeBitmap(bitmap);
+  }
+}
+
+async function drainFrameQueue() {
+  if (processing) return;
+  processing = true;
+  while (queuedFrame) {
+    const frame = queuedFrame;
+    queuedFrame = null;
+    await processQueuedFrame(frame);
+  }
+  processing = false;
+}
+
+function enqueueFrame(data) {
+  if (queuedFrame?.bitmap) {
+    closeBitmap(queuedFrame.bitmap);
+  }
+  queuedFrame = data;
+  drainFrameQueue();
 }
 
 self.onmessage = async (event) => {
@@ -285,44 +364,5 @@ self.onmessage = async (event) => {
   }
 
   if (data.type !== "frame") return;
-
-  const bitmap = data.bitmap;
-  try {
-    await ensureInitialized();
-    if (!scratchCanvas || scratchCanvas.width !== bitmap.width || scratchCanvas.height !== bitmap.height) {
-      scratchCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      scratchContext = scratchCanvas.getContext("2d", { alpha: false, desynchronized: true });
-    }
-
-    scratchContext.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-    scratchContext.drawImage(bitmap, 0, 0, scratchCanvas.width, scratchCanvas.height);
-    let payload;
-    try {
-      payload = inferFromCanvas(data.timestamp, data.antiJitter);
-    } catch (error) {
-      if (currentSource === "worker-gpu") {
-        self.postMessage({
-          type: "engine",
-          source: "worker-init",
-          error: error.message,
-          message: "Error GPU en runtime, cambiando a fallback CPU.",
-        });
-        await createLandmarker("CPU");
-        payload = inferFromCanvas(data.timestamp, data.antiJitter);
-      } else {
-        throw error;
-      }
-    }
-    self.postMessage(payload);
-  } catch (error) {
-    handLandmarker = null;
-    currentSource = "worker-init";
-    self.postMessage({ type: "error", error: error.message, source: currentSource });
-  } finally {
-    try {
-      bitmap.close();
-    } catch {
-      // no-op
-    }
-  }
+  enqueueFrame(data);
 };

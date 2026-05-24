@@ -36,8 +36,10 @@ export function GestureHudPanel({
           <dd className="handlab-mono">{perf?.fps ?? "—"} fps · {perf?.inferMs ?? "—"} ms</dd>
         </div>
         <div className="handlab-dl-row">
-          <dt>Modo core</dt>
-          <dd className="handlab-mono">{controlMode ?? "—"}</dd>
+          <dt>Modo control</dt>
+          <dd className="handlab-mono">
+            {controlMode === "desconectado" ? "backend offline" : (controlMode ?? "—")}
+          </dd>
         </div>
         <div className="handlab-dl-row">
           <dt>Modo lab</dt>

@@ -1,11 +1,16 @@
 import { useEffect, useRef } from "react";
+import { getFluidDisplayHands } from "./handMotion.js";
 import {
   atomDisplayLabel,
   fieldStateLabel,
-  gesturePalette,
-  getParticleCount,
   pinchFromHand,
 } from "./handLabUtils";
+import {
+  getDprCap,
+  getMeshNodeCount,
+  getParticleCount,
+  getTargetFps,
+} from "./handLabPerf.js";
 import {
   drawAmbientParticles,
   drawAtomGraph,
@@ -47,58 +52,97 @@ function resizeParticles(list, target) {
   return next;
 }
 
-export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
+function setupCanvasSize(canvas, dprCap) {
+  const cssW = canvas.clientWidth || 640;
+  const cssH = canvas.clientHeight || 360;
+  const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+  const w = Math.round(cssW * dpr);
+  const h = Math.round(cssH * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  return { w, h, dpr };
+}
+
+/**
+ * @param {React.RefObject<HTMLCanvasElement>} canvasRef
+ * @param {React.MutableRefObject<object>} snapshotRef
+ * @param {string} perfTier
+ * @param {boolean} renderActive — pausar si no visible
+ */
+export function useHandLabFusion(canvasRef, snapshotRef, perfTier, renderActive = true, trackingRef = null) {
   const particlesRef = useRef([]);
   const nodeAnglesRef = useRef([]);
   const lastTsRef = useRef(0);
+  const accumRef = useRef(0);
   const orbitPhaseRef = useRef(0);
   const focusAtomIdRef = useRef(null);
+  const sizeKeyRef = useRef("");
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
 
     let raf = 0;
-    const nodeCount = 52;
+    const nodeCount = getMeshNodeCount(perfTier);
+    const targetFps = getTargetFps(perfTier);
+    const frameBudget = 1000 / targetFps;
+    const dprCap = getDprCap(perfTier);
+    const drawAllLabels = perfTier === "cinematic";
+
     if (nodeAnglesRef.current.length !== nodeCount) {
       nodeAnglesRef.current = Array.from({ length: nodeCount }, (_, i) => (i / nodeCount) * Math.PI * 2);
     }
 
     const tick = (ts) => {
+      raf = requestAnimationFrame(tick);
+
+      if (!renderActive) return;
+
       const last = lastTsRef.current || ts;
       const dt = Math.min(32, ts - last);
       lastTsRef.current = ts;
+      accumRef.current += dt;
+      if (accumRef.current < frameBudget) return;
+      accumRef.current = 0;
 
       const snap = snapshotRef.current || {};
+      const live = trackingRef?.current;
       const {
         cameraOn,
-        hand,
-        trackedHands: handsList,
-        gesture,
-        atoms,
+        hand: snapHand,
+        trackedHands: snapHands,
+        gesture: snapGesture,
+        atoms: snapAtoms,
         thumbFlashUntil = 0,
-        focal,
+        focal: snapFocal,
       } = snap;
+      const fluidHands = live ? getFluidDisplayHands(live) : [];
+      const handsList = fluidHands.length ? fluidHands : (live?.trackedHands ?? snapHands);
+      const hand = handsList[0] ?? live?.hand ?? snapHand;
+      const gesture = live?.gesture ?? snapGesture;
+      const atoms = live?.atoms ?? snapAtoms;
+      const focal = live?.focal ?? snapFocal;
 
       const activeHands = handsList?.length ? handsList : (hand ? [hand] : []);
+      const { w, h, dpr } = setupCanvasSize(canvas, dprCap);
+      const sizeKey = `${w}x${h}`;
+      if (sizeKey !== sizeKeyRef.current) sizeKeyRef.current = sizeKey;
 
-      const w = canvas.clientWidth || 640;
-      const h = canvas.clientHeight || 360;
-      if (canvas.width !== w) canvas.width = w;
-      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+      if (!ctx) return;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        raf = requestAnimationFrame(tick);
-        return;
-      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      const cssW = w / dpr;
+      const cssH = h / dpr;
 
       const tierCount = getParticleCount(perfTier);
       particlesRef.current = resizeParticles(particlesRef.current, tierCount);
 
-      ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, cssW, cssH);
 
-      const pal = gesturePalette(gesture?.name || "unknown");
       const fieldLabel = fieldStateLabel(gesture?.name || "unknown");
 
       let ax = focal?.x ?? 0.5;
@@ -112,9 +156,8 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
         ay = 0.52 + Math.cos(orbitPhaseRef.current * 0.8) * 0.06;
       }
 
-      const centerX = ax * w;
-      const centerY = ay * h;
-
+      const centerX = ax * cssW;
+      const centerY = ay * cssH;
       const pinchPoint =
         pinchFromHand(hand) || (activeHands[1] ? pinchFromHand(activeHands[1]) : null);
 
@@ -137,10 +180,10 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
         const ra = spread * (0.55 + layer * 0.45 + (i % 9) * 0.018);
         let nx = ax + Math.cos(angles[i] + orbitPhaseRef.current * 0.35) * ra;
         let ny = ay + Math.sin(angles[i] * 1.09 + orbitPhaseRef.current * 0.3) * ra * 0.88;
-        const nz = 0.25 + layer * 0.55 + Math.sin(angles[i] * 2 + ts * 0.001) * 0.08;
+        const nz = 0.25 + layer * 0.55;
 
         if (pinchPoint?.active) {
-          const pull = 0.12;
+          const pull = cameraOn ? 0.2 : 0.12;
           nx = nx * (1 - pull) + pinchPoint.x * pull;
           ny = ny * (1 - pull) + pinchPoint.y * pull;
         }
@@ -152,7 +195,7 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
         nodes.push({ x: nx, y: ny, z: nz, i, hot });
       }
 
-      drawNeuralMesh(ctx, w, h, nodes, centerX, centerY);
+      drawNeuralMesh(ctx, cssW, cssH, nodes, centerX, centerY);
 
       const parts = particlesRef.current;
       const gx = gesture?.name === "point" && hand?.[8] ? 1 - hand[8].x : ax;
@@ -184,8 +227,6 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
 
         p.vx += fx * dt;
         p.vy += fy * dt;
-        p.vx += Math.sin(ts * 0.001 + p.phase) * 0.000016;
-        p.vy += Math.cos(ts * 0.0009 + p.phase) * 0.000016;
         p.vx *= 0.984;
         p.vy *= 0.984;
         p.x += p.vx * dt;
@@ -196,88 +237,71 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
         p.y = Math.min(1, Math.max(0, p.y));
       }
 
-      drawAmbientParticles(ctx, w, h, parts, ts, gesture?.name);
+      drawAmbientParticles(ctx, cssW, cssH, parts, ts);
 
       for (const activeHand of activeHands) {
-        drawHandTethers(ctx, w, h, activeHand, nodes);
+        drawHandTethers(ctx, cssW, cssH, activeHand, nodes);
       }
 
-      drawMeshNodes(ctx, w, h, nodes, pal);
-      drawAtomGraph(ctx, w, h, atoms, nodes, focusAtomIdRef.current, ts);
+      drawMeshNodes(ctx, cssW, cssH, nodes);
+      drawAtomGraph(ctx, cssW, cssH, atoms, nodes, focusAtomIdRef.current, ts, drawAllLabels);
 
       if (gesture?.name === "point" && hand?.[8]) {
-        const ix = (1 - hand[8].x) * w;
-        const iy = hand[8].y * h;
-        ctx.save();
-        ctx.strokeStyle = "rgba(180, 130, 255, 0.92)";
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = "rgba(180, 130, 255, 0.8)";
-        ctx.setLineDash([5, 8]);
-        const far = nodes.reduce((best, n) => {
-          const d = Math.hypot(n.x * w - ix, n.y * h - iy);
-          return d > (best.d ?? -1) ? { n, d } : best;
-        }, { n: nodes[0], d: -1 });
+        const ix = (1 - hand[8].x) * cssW;
+        const iy = hand[8].y * cssH;
+        let far = nodes[0];
+        let md = -1;
+        for (const n of nodes) {
+          const d = Math.hypot(n.x * cssW - ix, n.y * cssH - iy);
+          if (d > md) {
+            md = d;
+            far = n;
+          }
+        }
+        ctx.strokeStyle = "rgba(180, 130, 255, 0.85)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 6]);
         ctx.beginPath();
         ctx.moveTo(ix, iy);
-        ctx.lineTo(far.n.x * w, far.n.y * h);
+        ctx.lineTo(far.x * cssW, far.y * cssH);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.restore();
       }
 
       const pinchPoints = activeHands.map((h) => pinchFromHand(h)).filter(Boolean);
       for (const pp of pinchPoints) {
-        const pcx = pp.x * w;
-        const pcy = pp.y * h;
-        const rad = pp.active ? 26 + Math.sin(ts * 0.012) * 5 : 16;
-        ctx.save();
-        ctx.strokeStyle = pp.active ? "rgba(69,255,177,0.9)" : "rgba(200,220,255,0.4)";
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 14;
-        ctx.shadowColor = "rgba(69,255,177,0.6)";
+        const pcx = pp.x * cssW;
+        const pcy = pp.y * cssH;
+        const rad = pp.active ? 24 + Math.sin(ts * 0.012) * 4 : 14;
+        ctx.strokeStyle = pp.active ? "rgba(69,255,177,0.85)" : "rgba(200,220,255,0.35)";
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(pcx, pcy, rad, 0, Math.PI * 2);
         ctx.stroke();
-        if (pp.active) {
-          ctx.strokeStyle = "rgba(69,255,177,0.28)";
-          ctx.beginPath();
-          ctx.arc(pcx, pcy, rad + 18, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.restore();
       }
 
       if (ts < thumbFlashUntil) {
-        ctx.fillStyle = `rgba(69, 255, 177, ${0.08 + 0.06 * Math.sin(ts * 0.02)})`;
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = `rgba(69, 255, 177, ${0.06 + 0.04 * Math.sin(ts * 0.02)})`;
+        ctx.fillRect(0, 0, cssW, cssH);
       }
 
       if (focusAtomIdRef.current && atoms?.length) {
         const focusAtom = atoms.find((a) => a.id === focusAtomIdRef.current);
         const fi = atoms.indexOf(focusAtom);
         if (focusAtom) {
-          const lx = (1 - focusAtom.x) * w;
-          const ly = focusAtom.y * h;
-          ctx.save();
-          ctx.font = '700 15px "Segoe UI", system-ui, sans-serif';
+          const lx = (1 - focusAtom.x) * cssW;
+          const ly = focusAtom.y * cssH;
+          ctx.font = '700 14px "Segoe UI", system-ui, sans-serif';
           ctx.fillStyle = "rgba(220, 252, 255, 0.92)";
-          ctx.shadowBlur = 16;
-          ctx.shadowColor = "rgba(0, 220, 255, 0.55)";
           const title = atomDisplayLabel(focusAtom, fi);
           const tw = ctx.measureText(title).width;
-          ctx.fillText(title, lx - tw * 0.5, ly - 28);
-          ctx.restore();
+          ctx.fillText(title, lx - tw * 0.5, ly - 22);
         }
       }
 
-      ctx.save();
       ctx.font = '600 10px "Share Tech Mono", ui-monospace, monospace';
-      ctx.fillStyle = "rgba(190, 235, 255, 0.65)";
-      ctx.fillText(fieldLabel, 14, h - 12);
-      ctx.restore();
-
-      raf = requestAnimationFrame(tick);
+      ctx.fillStyle = "rgba(190, 235, 255, 0.6)";
+      ctx.fillText(fieldLabel, 12, cssH - 10);
     };
 
     particlesRef.current = initParticles(getParticleCount(perfTier));
@@ -285,6 +309,7 @@ export function useHandLabFusion(canvasRef, snapshotRef, perfTier) {
     return () => {
       cancelAnimationFrame(raf);
       lastTsRef.current = 0;
+      accumRef.current = 0;
     };
-  }, [canvasRef, perfTier, snapshotRef]);
+  }, [canvasRef, perfTier, snapshotRef, renderActive, trackingRef]);
 }

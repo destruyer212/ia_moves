@@ -86,6 +86,308 @@
   min-height: 560px;
 }
 
+.handlab-root--fullscreen {
+  min-height: 0;
+  height: 100%;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.handlab-root--cinema .handlab-stage--immersive {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.handlab-root--cinema .handlab-fusion,
+.handlab-root--cinema .handlab-landmarks,
+.handlab-root--cinema .handlab-video {
+  width: 100%;
+  height: 100%;
+}
+
+.handlab-root--cinema .handlab-hud-br {
+  width: min(190px, 32vw);
+  gap: 6px;
+}
+
+.handlab-root--cinema .handlab-panel--compact {
+  padding: 8px 10px;
+  font-size: 0.72rem;
+}
+
+.handlab-dock-toggle {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(98, 233, 255, 0.45);
+  background: rgba(4, 12, 20, 0.72);
+  color: rgba(200, 245, 255, 0.9);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.handlab-dock--overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  z-index: 24;
+  max-height: 42vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transform: translateY(110%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.2s ease;
+}
+
+.handlab-dock--overlay.handlab-dock--open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.handlab-dock--overlay .handlab-toolbar {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(4, 12, 20, 0.88);
+  border: 1px solid rgba(98, 233, 255, 0.28);
+  border-radius: 10px 10px 0 0;
+  backdrop-filter: blur(10px);
+}
+
+.handlab-dock--overlay .handlab-panel--console {
+  max-height: 22vh;
+  overflow: hidden;
+  border-radius: 0 0 10px 10px;
+  background: rgba(4, 10, 18, 0.92);
+}
+
+.handlab-surface {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.handlab-surface--cinema {
+  height: 100dvh;
+  background: #02060c;
+}
+
+.handlab-surface-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 12px 10px;
+  padding: 10px 14px;
+}
+
+.handlab-surface--cinema .handlab-surface-bar--overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 0;
+  background: linear-gradient(180deg, rgba(2, 8, 14, 0.88) 0%, rgba(2, 8, 14, 0.35) 72%, transparent 100%);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.handlab-surface--cinema .handlab-surface-bar--overlay .handlab-surface-actions,
+.handlab-surface--cinema .handlab-surface-bar--overlay .handlab-btn {
+  pointer-events: auto;
+}
+
+.handlab-surface--cinema .handlab-surface-title {
+  font-size: 0.95rem;
+}
+
+.handlab-surface--cinema .handlab-breadcrumb-kicker {
+  font-size: 0.55rem;
+}
+
+.handlab-surface-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.handlab-surface-title {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  color: #e8fbff;
+}
+
+.handlab-surface-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.handlab-surface-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+
+.handlab-surface-body--cinema {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  flex: none;
+  width: 100%;
+  height: 100%;
+}
+
+.handlab-surface-body .handlab-root--fullscreen {
+  height: 100%;
+}
+
+.handlab-surface-body .handlab-stage--immersive {
+  min-height: 0;
+  height: calc(100vh - 118px);
+}
+
+.handlab-surface-body--cinema .handlab-root--cinema {
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+}
+
+.handlab-surface-body--cinema .handlab-stage--immersive {
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+}
+
+.handlab-surface-body--cinema .handlab-camera-layer {
+  border-radius: 0;
+  border: none;
+}
+
+.handlab-surface-body .handlab-camera-layer {
+  min-height: 100%;
+  height: 100%;
+}
+
+.handlab-launcher-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 200px;
+  justify-content: center;
+  text-align: center;
+  padding: 20px 16px;
+  background:
+    linear-gradient(165deg, rgba(98, 233, 255, 0.1), transparent 45%),
+    linear-gradient(145deg, rgba(8, 16, 28, 0.95), rgba(4, 8, 14, 0.98));
+}
+
+.handlab-launcher-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #e8fbff;
+}
+
+.handlab-launcher-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: rgba(180, 220, 235, 0.8);
+  max-width: 42ch;
+  margin-inline: auto;
+}
+
+.handlab-launcher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.shell--handlab-only.neo-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  min-height: 100vh;
+}
+
+.shell--handlab-only.neo-shell::after {
+  display: none;
+}
+
+.shell--handlab-only .hud-3d-layer,
+.shell--handlab-only .hud-cosmos {
+  display: none;
+}
+
+.shell--handlab-only .neo-header {
+  display: none;
+}
+
+.handlab-surface {
+  width: 100%;
+  max-width: 100vw;
+}
+
+.handlab-surface-body:not(.handlab-surface-body--cinema) {
+  padding: 0 8px 8px;
+}
+
+.handlab-surface-body:not(.handlab-surface-body--cinema) .handlab-root--fullscreen {
+  border-radius: 10px;
+}
+
+.handlab-stage--immersive .handlab-camera-layer,
+.handlab-surface-body .handlab-camera-layer {
+  aspect-ratio: unset;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 10px;
+}
+
+.handlab-surface-body .handlab-stage--immersive {
+  height: 100%;
+  min-height: 0;
+}
+
+.handlab-surface-body .handlab-toolbar {
+  margin: 0 4px 6px;
+}
+
+.handlab-surface-body .handlab-console {
+  margin: 0 4px 4px;
+}
+
+.shell--deck-only .bento-atom {
+  min-height: 0;
+}
+
 .handlab-hud-layer {
   position: absolute;
   inset: 0;
@@ -355,7 +657,8 @@
 .handlab-fusion {
   z-index: 5;
   mix-blend-mode: screen;
-  filter: saturate(1.15);
+  filter: saturate(1.1) drop-shadow(0 0 8px rgba(98, 233, 255, 0.25));
+  contain: strict;
 }
 
 .handlab-landmarks {
@@ -461,6 +764,8 @@
   height: 100%;
   pointer-events: none;
   transform: scaleX(-1);
+  will-change: transform, contents;
+  contain: strict;
 }
 
 .handlab-fusion {
@@ -471,6 +776,12 @@
   height: 100%;
   pointer-events: none;
   mix-blend-mode: screen;
+  will-change: contents;
+  contain: strict;
+}
+
+.handlab-video--live {
+  will-change: contents;
 }
 
 .handlab-demo-overlay {

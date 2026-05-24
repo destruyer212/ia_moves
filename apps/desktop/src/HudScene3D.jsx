@@ -18,15 +18,15 @@ function HoloRings({ intensity }) {
   return (
     <group ref={groupRef}>
       <mesh rotation={[Math.PI * 0.5, 0, 0]} position={[0, 0, -0.4]}>
-        <torusGeometry args={[2.2, 0.024, 24, 220]} />
+        <torusGeometry args={[2.2, 0.024, 16, 96]} />
         <meshBasicMaterial color="#62e9ff" transparent opacity={0.2 + glow * 0.35} />
       </mesh>
       <mesh rotation={[Math.PI * 0.5, 0.24, 0]} position={[0, 0, -1.1]}>
-        <torusGeometry args={[3.05, 0.026, 24, 220]} />
+        <torusGeometry args={[3.05, 0.026, 16, 96]} />
         <meshBasicMaterial color="#45ffb1" transparent opacity={0.12 + glow * 0.23} />
       </mesh>
       <mesh rotation={[Math.PI * 0.5, -0.3, 0.2]} position={[0, 0, -1.7]}>
-        <torusGeometry args={[4.3, 0.028, 24, 220]} />
+        <torusGeometry args={[4.3, 0.028, 16, 96]} />
         <meshBasicMaterial color="#ffc857" transparent opacity={0.1 + glow * 0.2} />
       </mesh>
     </group>
@@ -35,7 +35,7 @@ function HoloRings({ intensity }) {
 
 function ParticleField({ intensity }) {
   const pointsRef = useRef(null);
-  const count = 900;
+  const count = 280;
 
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -92,13 +92,14 @@ function EnergyPlane({ intensity }) {
   );
 }
 
-export function HudScene3D({ intensity = 0.75 }) {
+export function HudScene3D({ intensity = 0.75, active = true }) {
   return (
     <div className="hud-3d-layer" aria-hidden="true">
       <Canvas
-        dpr={[1, 1.5]}
+        frameloop={active ? "always" : "never"}
+        dpr={[1, 1.25]}
         camera={{ position: [0, 0.1, 8], fov: 46 }}
-        gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+        gl={{ alpha: true, antialias: false, powerPreference: "high-performance" }}
       >
         <ambientLight intensity={0.25 + intensity * 0.2} />
         <pointLight position={[2.5, 2.5, 4]} intensity={1 + intensity * 1.1} color="#62e9ff" />
