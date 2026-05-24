@@ -11,29 +11,16 @@ function readInput(inputRef) {
 
 export function OrbitalPlanet({ inputRef, sceneStateRef }) {
   const groupRef = useRef(null);
-  const orbitVel = useRef({ x: 0, y: 0 });
   const atmosphereRef = useRef(null);
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const g = groupRef.current;
     if (!g) return;
-    const { interaction, spatial, continuum } = readInput(inputRef);
-    const pinch =
-      spatial?.leftPinch?.active ? true : spatial?.primaryPinch?.active;
 
-    const drag = continuum?.palmDrag;
-    if (pinch && continuum?.active && !continuum?.twoHandZoom && drag) {
-      g.rotation.y += drag.orbitYaw * 1.25;
-      g.rotation.x += drag.orbitPitch * 0.95;
-    } else {
-      orbitVel.current.x *= 0.94;
-      orbitVel.current.y *= 0.94;
-    }
-    g.position.y = 0.15 + Math.sin(state.clock.elapsedTime * 0.9) * 0.06;
+    g.position.y = 0.15 + Math.sin(state.clock.elapsedTime * 0.35) * 0.02;
 
     if (atmosphereRef.current) {
-      const pulse = 1 + (interaction?.fieldStrength ?? 0.1) * 0.08;
-      atmosphereRef.current.scale.setScalar(pulse);
+      atmosphereRef.current.scale.setScalar(1.02);
     }
 
     sceneStateRef.current.globe = {

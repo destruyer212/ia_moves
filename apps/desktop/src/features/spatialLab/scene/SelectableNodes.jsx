@@ -35,9 +35,8 @@ function SelectableNode({ node, sceneStateRef }) {
     const m = meshRef.current;
     if (!m) return;
     const t = state.clock.elapsedTime;
-    m.position.y = node.position[1] + Math.sin(t * 1.2 + node.id.length) * 0.06;
-    const s = selected ? 1.35 : 1;
-    m.scale.setScalar(s + Math.sin(t * 2) * 0.04);
+    m.position.y = node.position[1] + Math.sin(t * 0.4 + node.id.length) * 0.02;
+    m.scale.setScalar(selected ? 1.2 : 1);
   });
 
   return (

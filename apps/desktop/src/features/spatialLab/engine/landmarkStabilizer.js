@@ -6,6 +6,7 @@ import { measureHandScale } from "./handMetrics.js";
 import { stillnessDampAlpha } from "./stillnessGate.js";
 
 const HOLD_MS = 200;
+const HOLD_MS_PINCH = 720;
 const NEAR_SCALE = 0.26;
 const FAR_SCALE = 0.07;
 
@@ -57,7 +58,7 @@ export function analyzeHandProximity(hand) {
     bounds.minY > 0.01 &&
     bounds.maxY < 0.99;
 
-  const nearCamera = scale >= NEAR_SCALE || bounds.width > 0.55 || bounds.height > 0.62;
+  const nearCamera = scale >= NEAR_SCALE * 1.08 || bounds.width > 0.58 || bounds.height > 0.65;
   const farCamera = scale <= FAR_SCALE;
 
   let quality = 1;
@@ -81,8 +82,8 @@ export function stabilizeHandLandmarks(hand, prevHand, forceIdle = false) {
   const prox = analyzeHandProximity(hand);
   const motion = handMotionSpeed(hand, prevHand);
   const microStill = forceIdle || motion < 0.004;
-  let alpha = prox.nearCamera ? 0.24 : prox.quality < 0.6 ? 0.28 : 0.34;
-  if (microStill) alpha = 0.09;
+  let alpha = prox.nearCamera ? 0.32 : prox.quality < 0.6 ? 0.3 : 0.38;
+  if (microStill) alpha = 0.14;
   alpha = stillnessDampAlpha(microStill, alpha);
 
   let out;
@@ -96,7 +97,7 @@ export function stabilizeHandLandmarks(hand, prevHand, forceIdle = false) {
       let z = (ph.z ?? 0) + ((p.z ?? 0) - (ph.z ?? 0)) * alpha;
 
       const jump = Math.hypot(p.x - ph.x, p.y - ph.y);
-      const maxJump = prox.nearCamera ? 0.045 : 0.09;
+      const maxJump = prox.nearCamera ? 0.065 : 0.1;
       if (jump > maxJump) {
         x = ph.x + (p.x - ph.x) * (maxJump / jump);
         y = ph.y + (p.y - ph.y) * (maxJump / jump);
@@ -110,6 +111,43 @@ export function stabilizeHandLandmarks(hand, prevHand, forceIdle = false) {
 }
 
 const holdState = { hands: null, prev: null, until: 0 };
+
+function wristDist(a, b) {
+  if (!a?.[0] || !b?.[0]) return 1;
+  return Math.hypot(a[0].x - b[0].x, a[0].y - b[0].y);
+}
+
+const ghostState = { hand: null, liveIndex: 0, until: 0 };
+
+/** Mano fantasma congelada solo con pinza activa (evita saltos izq/der) */
+function complementMissingHand(currentHands, prevHands, track, now) {
+  if (currentHands.length !== 1) {
+    ghostState.hand = null;
+    return currentHands;
+  }
+  const pinch = track?.spatialLeftPinch || track?.spatialRightPinch;
+  if (!pinch || !prevHands?.length) return currentHands;
+
+  const live = currentHands[0];
+  if (!ghostState.hand || now > ghostState.until) {
+    if (prevHands.length === 2) {
+      const [p0, p1] = prevHands;
+      const d0 = wristDist(live, p0);
+      const d1 = wristDist(live, p1);
+      ghostState.hand = (d0 <= d1 ? p1 : p0).map((p) => ({ ...p }));
+      ghostState.liveIndex = d0 <= d1 ? 0 : 1;
+    } else if (prevHands.length === 1 && wristDist(live, prevHands[0]) > 0.04) {
+      ghostState.hand = prevHands[0].map((p) => ({ ...p }));
+      ghostState.liveIndex = 0;
+    } else {
+      return currentHands;
+    }
+    ghostState.until = now + HOLD_MS_PINCH;
+  }
+
+  const ghostCopy = ghostState.hand.map((p) => ({ ...p }));
+  return ghostState.liveIndex === 0 ? [live, ghostCopy] : [ghostCopy, live];
+}
 
 export function stabilizeHandsForSpatial(hands, trackRef) {
   const now = performance.now();
@@ -125,20 +163,25 @@ export function stabilizeHandsForSpatial(hands, trackRef) {
   }
 
   const prevList = holdState.prev ?? track?.spatialPrevHands ?? null;
+  const inputHands = complementMissingHand(hands, prevList, track, now);
   const stabilized = [];
   const proximities = [];
 
-  for (let i = 0; i < hands.length; i++) {
-    const res = stabilizeHandLandmarks(hands[i], prevList?.[i]);
+  for (let i = 0; i < inputHands.length; i++) {
+    const res = stabilizeHandLandmarks(inputHands[i], prevList?.[i]);
     if (res) {
       stabilized.push(res.hand);
       proximities.push(res.proximity);
     }
   }
 
+  const pinchHeld =
+    track?.spatialLeftPinch || track?.spatialRightPinch || stabilized.length >= 2;
+  const holdMs = pinchHeld ? HOLD_MS_PINCH : HOLD_MS;
+
   holdState.hands = stabilized;
   holdState.prev = stabilized.map((h) => h.map((p) => ({ ...p })));
-  holdState.until = now + HOLD_MS;
+  holdState.until = now + holdMs;
 
   if (track) {
     track.spatialPrevHands = holdState.prev;
@@ -180,15 +223,13 @@ export function updateDepthBaseline(state, scale, proximity, gestureName) {
   const ratio = scale / state.baselineScale;
 
   if (proximity?.nearCamera) {
-    if (ratio > 1.2) {
-      state.baselineScale += (scale - state.baselineScale) * 0.04;
-    }
+    state.baselineScale = state.baselineScale * 0.92 + scale * 0.08;
     return state.baselineScale;
   }
 
-  if (ratio > 1.45 || ratio < 0.62) {
-    const pull = Math.log(ratio) * 0.06;
-    state.baselineScale *= 1 + clamp(pull, -0.035, 0.035);
+  if (ratio > 1.55 || ratio < 0.58) {
+    const pull = Math.log(ratio) * 0.05;
+    state.baselineScale *= 1 + clamp(pull, -0.04, 0.04);
     return state.baselineScale;
   }
 
@@ -202,9 +243,9 @@ export function updateDepthBaseline(state, scale, proximity, gestureName) {
 export function depthRatioFromBaseline(baseline, scale, proximity) {
   if (!baseline || baseline < 1e-4) return 1;
   let ratio = scale / baseline;
-  ratio = clamp(ratio, 0.7, 1.45);
+  ratio = clamp(ratio, 0.62, 1.65);
   if (proximity?.nearCamera) {
-    ratio = clamp(ratio, 0.78, 1.28);
+    ratio = clamp(ratio, 0.58, 1.55);
   }
   return ratio;
 }
@@ -219,6 +260,8 @@ export function resetLandmarkStabilizer(trackRef) {
   holdState.hands = null;
   holdState.prev = null;
   holdState.until = 0;
+  ghostState.hand = null;
+  ghostState.until = 0;
   const track = trackRef?.current;
   if (track) {
     track.spatialPrevHands = null;

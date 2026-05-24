@@ -36,22 +36,19 @@ export function BimanualGuides({ inputRef }) {
 
     if (leftRef.current && lw) {
       leftRef.current.position.set(lw.x, lw.y, lw.z);
-      leftRef.current.scale.setScalar(
-        spatial.leftPinch?.active ? 1.35 + Math.sin(t * 4) * 0.08 : 0.9,
-      );
+      leftRef.current.scale.setScalar(spatial.leftPinch?.active ? 1.15 : 0.92);
     }
     if (rightRef.current && rw) {
       rightRef.current.position.set(rw.x, rw.y, rw.z);
-      const orbit = continuum?.palmDrive;
-      rightRef.current.scale.setScalar(orbit ? 1.25 : 1);
+      rightRef.current.scale.setScalar(continuum?.palmDrive ? 1.12 : 1);
       if (rightRef.current.material) {
-        rightRef.current.material.opacity = orbit ? 0.95 : 0.55;
+        rightRef.current.material.opacity = continuum?.palmDrive ? 0.82 : 0.58;
       }
     }
 
     if (arcRef.current) {
-      arcRef.current.rotation.z = t * 0.5;
-      arcRef.current.position.y = 0.2 + Math.sin(t * 0.8) * 0.05;
+      arcRef.current.rotation.z = t * 0.12;
+      arcRef.current.position.y = 0.2;
     }
   });
 

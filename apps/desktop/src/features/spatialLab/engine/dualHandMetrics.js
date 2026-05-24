@@ -3,7 +3,7 @@ import { pinchFromLandmarks, palmCenter } from "./spatialMapping.js";
 
 /** Métricas de dos manos — pinch spread, centro, ángulo (como multitáctil) */
 export function mapDualHandMetrics(hands, spatial) {
-  if (!hands?.length || hands.length < 2 || !spatial?.twoHands) {
+  if (!hands?.length || hands.length < 2) {
     return { active: false };
   }
 

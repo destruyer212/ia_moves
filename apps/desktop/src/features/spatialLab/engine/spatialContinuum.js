@@ -9,7 +9,9 @@ import {
   updateDepthBaseline,
 } from "./landmarkStabilizer.js";
 import { dualDriveDeltas, resetPalmNavigation } from "./palmNavigation.js";
+import { resetPinchLatch } from "./spatialMapping.js";
 import { updateBimanualContinuum, updateSingleHandContinuum } from "./bimanualControl.js";
+import { resetCameraStabilizer } from "./cameraStabilizer.js";
 import { resetStillnessGate, updateStillnessChannels } from "./stillnessGate.js";
 
 export { measureHandScale };
@@ -52,6 +54,11 @@ export function resetSpatialContinuum() {
   state.twoHandMode = false;
   resetPalmNavigation();
   resetStillnessGate();
+  resetPinchLatch();
+  resetCameraStabilizer();
+  state._pinchZoomBase = null;
+  state.panX = 0;
+  state.panZ = 0;
 }
 
 function clamp(v, lo, hi) {
@@ -87,11 +94,21 @@ export function updateSpatialContinuum(hands, gesture, spatial) {
   const zoomHand =
     spatial.bimanual?.left?.hand ?? spatial.bimanual?.right?.hand ?? hand;
   const scaleEarly = measureHandScale(zoomHand);
-  const orbitNorm =
-    spatial.right?.norm ?? spatial.left?.norm ?? spatial.primary?.norm;
+  const leftPinch = !!spatial.leftPinch?.active;
+  const rightPinch = !!spatial.rightPinch?.active;
+  const pinchActive = leftPinch || rightPinch;
+  let orbitNorms = [spatial.left?.norm, spatial.right?.norm].filter(Boolean);
+  if (leftPinch && !rightPinch && spatial.right?.norm) {
+    orbitNorms = [spatial.right.norm];
+  } else if (rightPinch && !leftPinch && spatial.left?.norm) {
+    orbitNorms = [spatial.left.norm];
+  }
   const still = updateStillnessChannels({
     scale: scaleEarly,
-    orbitNorm,
+    orbitNorms,
+    pinchActive,
+    palmDriving: pinchActive,
+    bimanualPinch: leftPinch || rightPinch,
   });
   const idleOpts = {
     idle: still.idle,
@@ -101,7 +118,20 @@ export function updateSpatialContinuum(hands, gesture, spatial) {
   let targetZoom = state.smoothedZoom;
   let label = "";
 
-  if (spatial.bimanual?.bothVisible || (hands?.length ?? 0) >= 2) {
+  const hasLeft = !!(spatial.left?.norm || spatial.leftPinch?.active);
+  const hasRight = !!(spatial.right?.norm || spatial.rightPinch?.active);
+  const twoHandsLive =
+    (hasLeft && hasRight) ||
+    ((hands?.length ?? 0) >= 2 && spatial.bimanual?.bothVisible);
+
+  if (twoHandsLive) {
+    return updateBimanualContinuum(state, spatial, gesture, still, hands);
+  }
+
+  if (leftPinch && spatial.left && (spatial.right?.norm || hands?.length >= 2)) {
+    return updateBimanualContinuum(state, spatial, gesture, still, hands);
+  }
+  if (rightPinch && spatial.right && (spatial.left?.norm || hands?.length >= 2)) {
     return updateBimanualContinuum(state, spatial, gesture, still, hands);
   }
 
@@ -146,13 +176,17 @@ export function updateSpatialContinuum(hands, gesture, spatial) {
     }
 
     const dualNav = dualDriveDeltas(dual.normCenter, dual.angle, dual.dualPinch, {
-      idle: still.orbitFrozen,
+      idle: false,
+      _lastAngle: state.lastDualAngle,
     });
-    if (!still.zoomFrozen || !still.orbitFrozen) {
+    state.lastDualAngle = dual.angle;
+    if (!still.zoomFrozen || pinchActive) {
+      state.smoothedZoom += (targetZoom - state.smoothedZoom) * 0.18;
+    }
+    if (!still.orbitFrozen || pinchActive) {
       state.orbitYaw = dualNav.orbitYaw;
       state.panX = clamp(state.panX + dualNav.panDX, -2.2, 2.2);
       state.panZ = clamp(state.panZ + dualNav.panDZ, -1.6, 1.6);
-      state.smoothedZoom += (targetZoom - state.smoothedZoom) * 0.18;
     }
     state.orbitPitch = 0;
     state.orbitVelY = 0;
@@ -168,11 +202,15 @@ export function updateSpatialContinuum(hands, gesture, spatial) {
       depthRatio,
       targetZoom,
       twoHandZoom: true,
-      palmDrive: false,
+      palmDrive: Math.abs(state.orbitYaw) > 1e-5,
       pushing: spanRatio > 1.03 || depthRatio > 1.03,
       pulling: spanRatio < 0.97 || depthRatio < 0.97,
       label: still.idle ? "Mano quieta · mueve para controlar" : label,
       idle: still.idle,
+      zoomAllowed: !still.zoomFrozen || pinchActive,
+      orbitAllowed: !still.orbitFrozen || pinchActive,
+      zoomFrozen: still.zoomFrozen && !pinchActive,
+      orbitFrozen: still.orbitFrozen && !pinchActive,
     };
   }
 

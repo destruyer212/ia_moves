@@ -5,6 +5,8 @@ import { resetLandmarkStabilizer } from "./engine/landmarkStabilizer.js";
 import { resetSpatialContinuum } from "./engine/spatialContinuum.js";
 import { resetStillnessGate } from "./engine/stillnessGate.js";
 import { loadSandboxScene, saveSandboxScene } from "./engine/scenePersistence.js";
+import { SpatialLabErrorBoundary } from "./SpatialLabErrorBoundary.jsx";
+import { SpatialHandConfigPanel } from "./hud/SpatialHandConfigPanel.jsx";
 import { SpatialHudOverlay } from "./hud/SpatialHudOverlay.jsx";
 import { drawHandTrackingOverlay } from "../handLab/handLabDraw.js";
 import "./spatialLabStyles.css";
@@ -31,6 +33,7 @@ export function SpatialLabSurface({
     lastSavedAt: initialScene.savedAt,
   });
   const spatialInputRef = useRef(buildSpatialInput(trackingRef));
+  const hudTickRef = useRef(0);
   const [snapshot, setSnapshot] = useState(() => ({
     ...spatialInputRef.current,
     selectedNodeId: null,
@@ -38,6 +41,7 @@ export function SpatialLabSurface({
     lastSavedAt: initialScene.savedAt,
   }));
   const [saveFlash, setSaveFlash] = useState("");
+  const [canvasKey, setCanvasKey] = useState(0);
 
   const persistScene = useCallback(() => {
     const payload = saveSandboxScene({
@@ -54,14 +58,21 @@ export function SpatialLabSurface({
 
   useEffect(() => {
     let raf = 0;
-    const tick = () => {
-      spatialInputRef.current = buildSpatialInput(trackingRef);
-      setSnapshot({
-        ...spatialInputRef.current,
-        selectedNodeId: sceneStateRef.current.selectedNodeId,
-        selectedLabel: sceneStateRef.current.selectedLabel,
-        lastSavedAt: sceneStateRef.current.lastSavedAt,
-      });
+    const tick = (now) => {
+      try {
+        spatialInputRef.current = buildSpatialInput(trackingRef);
+      } catch (err) {
+        console.error("[SpatialLab] buildSpatialInput", err);
+      }
+      if (now - hudTickRef.current > 120) {
+        hudTickRef.current = now;
+        setSnapshot({
+          ...spatialInputRef.current,
+          selectedNodeId: sceneStateRef.current.selectedNodeId,
+          selectedLabel: sceneStateRef.current.selectedLabel,
+          lastSavedAt: sceneStateRef.current.lastSavedAt,
+        });
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -78,6 +89,7 @@ export function SpatialLabSurface({
       resetSpatialContinuum();
       resetLandmarkStabilizer(trackingRef);
       resetStillnessGate();
+      hudTickRef.current = 0;
     }
   }, [vision?.running, trackingRef]);
 
@@ -151,16 +163,18 @@ export function SpatialLabSurface({
       {saveFlash ? <div className="spatial-save-toast">{saveFlash}</div> : null}
 
       <div className="spatial-surface__stage">
-        <Suspense fallback={<div className="spatial-loading">Cargando Rapier · Bloom · Raycast…</div>}>
-          <SpatialLabCanvas
-            inputRef={spatialInputRef}
-            trackingRef={trackingRef}
-            sceneStateRef={sceneStateRef}
-            initialScene={initialScene}
-          />
-        </Suspense>
+        <SpatialLabErrorBoundary key={canvasKey} onRetry={() => setCanvasKey((k) => k + 1)}>
+          <Suspense fallback={<div className="spatial-loading">Cargando Rapier · escena 3D…</div>}>
+            <SpatialLabCanvas
+              inputRef={spatialInputRef}
+              sceneStateRef={sceneStateRef}
+              initialScene={initialScene}
+            />
+          </Suspense>
+        </SpatialLabErrorBoundary>
 
         <SpatialHudOverlay snapshot={snapshot} perf={perf} vision={vision} />
+        <SpatialHandConfigPanel />
 
         <div className="spatial-pip">
           <video

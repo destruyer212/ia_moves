@@ -18,12 +18,49 @@
   cursor: pointer !important;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .spatial-surface *,
+  .spatial-surface *::before,
+  .spatial-surface *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.spatial-canvas-host canvas {
+  image-rendering: auto;
+}
+
 .spatial-surface {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  min-height: 100dvh;
   background: radial-gradient(ellipse 120% 80% at 50% 0%, #0c1830 0%, #010208 55%, #000 100%);
   overflow: hidden;
+  position: relative;
+  z-index: 0;
+}
+
+.spatial-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(4, 10, 20, 0.92);
+  color: #e8fbff;
+}
+
+.spatial-fallback pre {
+  max-width: 90vw;
+  font-size: 0.62rem;
+  color: rgba(255, 120, 120, 0.9);
+  white-space: pre-wrap;
 }
 
 .spatial-surface::before {
@@ -47,7 +84,7 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 20;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -98,6 +135,8 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  z-index: 1;
+  isolation: isolate;
 }
 
 .spatial-canvas-host,
@@ -311,4 +350,154 @@
 
 .spatial-hud__pick {
   color: #ffc857 !important;
+}
+
+/* Panel configuración manos (derecha, desplegable) */
+.spatial-config {
+  position: absolute;
+  top: 72px;
+  right: 14px;
+  z-index: 14;
+  width: min(280px, 34vw);
+  pointer-events: auto;
+  cursor: default;
+}
+
+.spatial-config * {
+  cursor: auto;
+}
+
+.spatial-config__toggle,
+.spatial-config__btn,
+.spatial-config input[type="range"],
+.spatial-config label {
+  cursor: pointer;
+}
+
+.spatial-config__toggle {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-align: left;
+  color: #e8fbff;
+  background: linear-gradient(135deg, rgba(12, 20, 40, 0.92), rgba(6, 10, 22, 0.88));
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.spatial-config:not(.spatial-config--open) .spatial-config__toggle {
+  border-radius: 10px;
+}
+
+.spatial-config__body {
+  padding: 10px 12px 14px;
+  background: linear-gradient(160deg, rgba(10, 18, 36, 0.94), rgba(4, 8, 18, 0.92));
+  border: 1px solid rgba(98, 233, 255, 0.28);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  backdrop-filter: blur(12px);
+  max-height: min(72vh, 520px);
+  overflow-y: auto;
+}
+
+.spatial-config__head {
+  margin-bottom: 10px;
+}
+
+.spatial-config__head p {
+  margin: 4px 0 0;
+  font-size: 0.58rem;
+  color: rgba(160, 210, 230, 0.75);
+}
+
+.spatial-config__chip {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.52rem;
+  letter-spacing: 0.16em;
+  color: rgba(255, 179, 71, 0.95);
+}
+
+.spatial-config__row {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.spatial-config__label {
+  display: block;
+  font-size: 0.62rem;
+  color: rgba(200, 235, 250, 0.9);
+  margin-bottom: 4px;
+}
+
+.spatial-config__label em {
+  display: block;
+  font-size: 0.52rem;
+  font-style: normal;
+  color: rgba(140, 190, 210, 0.65);
+  margin-top: 2px;
+}
+
+.spatial-config__slider-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spatial-config__slider-line input[type="range"] {
+  flex: 1;
+  accent-color: #62e9ff;
+}
+
+.spatial-config__value {
+  min-width: 1.4rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  color: #45ffb1;
+  text-align: right;
+}
+
+.spatial-config__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 0.58rem;
+  color: rgba(190, 225, 240, 0.85);
+}
+
+.spatial-config__checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spatial-config__actions {
+  margin-top: 8px;
+}
+
+.spatial-config__btn {
+  width: 100%;
+  padding: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: #d8f8ff;
+  background: rgba(4, 14, 24, 0.85);
+  border: 1px solid rgba(98, 233, 255, 0.35);
+  border-radius: 6px;
+}
+
+.spatial-config__tip {
+  margin: 10px 0 0;
+  font-size: 0.55rem;
+  line-height: 1.45;
+  color: rgba(150, 200, 220, 0.8);
+}
+
+.spatial-config__tip strong {
+  color: rgba(98, 233, 255, 0.95);
+  font-weight: 600;
 }

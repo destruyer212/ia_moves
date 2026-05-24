@@ -4,7 +4,13 @@ import { measureHandScale } from "./handMetrics.js";
 import { pinchThresholdForScale, stablePalmNorm } from "./landmarkStabilizer.js";
 import { resolveBimanualHands } from "./handRoles.js";
 
-export function pinchFromLandmarks(hand) {
+const pinchLatch = new Map();
+
+export function resetPinchLatch() {
+  pinchLatch.clear();
+}
+
+export function pinchFromLandmarks(hand, handKey = "0") {
   if (!hand || hand.length < 9) return null;
   const thumb = hand[4];
   const index = hand[8];
@@ -12,13 +18,16 @@ export function pinchFromLandmarks(hand) {
   const scale = measureHandScale(hand);
   const rel = distance / Math.max(scale, 0.06);
   const threshold = pinchThresholdForScale(scale);
+  const was = pinchLatch.get(handKey) ?? false;
+  const active = was ? rel < 0.68 && distance < threshold * 1.35 : rel < 0.62 || distance < threshold;
+  pinchLatch.set(handKey, active);
   return {
     x: 1 - (thumb.x + index.x) * 0.5,
     y: (thumb.y + index.y) * 0.5,
     z: ((thumb.z ?? 0) + (index.z ?? 0)) * 0.5,
     distance,
     relDistance: rel,
-    active: rel < 0.52 || distance < threshold,
+    active,
   };
 }
 
@@ -42,11 +51,11 @@ export function normToWorld(nx, ny, nz = 0, scale = { x: 5.2, y: 3.6, z: 2.6 }) 
   };
 }
 
-export function mapHandToSpatial(hand, proximity = null) {
+export function mapHandToSpatial(hand, proximity = null, handKey = "0") {
   const palm = palmCenter(hand);
   if (!palm) return null;
   const stableNorm = stablePalmNorm(hand);
-  const useStable = proximity?.nearCamera || (proximity?.quality ?? 1) < 0.75;
+  const useStable = proximity?.nearCamera && handKey !== "right";
   const norm = useStable && stableNorm ? stableNorm : {
     x: palm.x * 2 - 1,
     y: -(palm.y * 2 - 1),
@@ -58,7 +67,7 @@ export function mapHandToSpatial(hand, proximity = null) {
   return {
     palm: normToWorld(nx, ny, nz),
     norm: { x: nx, y: ny, z: nz },
-    pinch: pinchFromLandmarks(hand),
+    pinch: pinchFromLandmarks(hand, handKey),
     wrist: hand[0]
       ? normToWorld((1 - hand[0].x) * 2 - 1, -(hand[0].y * 2 - 1), (hand[0].z ?? 0) * 2)
       : null,
@@ -71,14 +80,14 @@ export function mapHandsToSpatial(hands, proximities = [], handednesses = []) {
   const bimanual = resolveBimanualHands(list, proximities, handednesses);
 
   const left = bimanual.left
-    ? mapHandToSpatial(bimanual.left.hand, bimanual.left.proximity)
+    ? mapHandToSpatial(bimanual.left.hand, bimanual.left.proximity, "left")
     : null;
   const right = bimanual.right
-    ? mapHandToSpatial(bimanual.right.hand, bimanual.right.proximity)
+    ? mapHandToSpatial(bimanual.right.hand, bimanual.right.proximity, "right")
     : null;
 
-  const primary = left ?? right ?? (list[0] ? mapHandToSpatial(list[0], proximities[0]) : null);
-  const secondary = right ?? (list[1] ? mapHandToSpatial(list[1], proximities[1]) : null);
+  const primary = left ?? right ?? (list[0] ? mapHandToSpatial(list[0], proximities[0], "p0") : null);
+  const secondary = right ?? (list[1] ? mapHandToSpatial(list[1], proximities[1], "p1") : null);
   const primaryProx = left?.proximity ?? proximities[0] ?? primary?.proximity ?? null;
 
   let handSpan = 0;

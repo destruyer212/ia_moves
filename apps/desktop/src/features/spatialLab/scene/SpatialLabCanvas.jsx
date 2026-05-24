@@ -2,8 +2,8 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Physics, RigidBody } from "@react-three/rapier";
 import { Suspense, useRef } from "react";
 import * as THREE from "three";
-import { buildSpatialInput } from "../engine/buildSpatialInput.js";
 import { DEFAULT_BLOCKS } from "../engine/scenePersistence.js";
+import { getHandControlConfig } from "../engine/handControlSettings.js";
 import { HolographicRig } from "./HolographicRig.jsx";
 import { OrbitalPlanet } from "./OrbitalPlanet.jsx";
 import { PhysicsBlocks } from "./PhysicsBlocks.jsx";
@@ -14,12 +14,16 @@ import { BimanualGuides } from "./BimanualGuides.jsx";
 import { PalmAffordance } from "./PalmAffordance.jsx";
 import { WorkspaceArena } from "./WorkspaceArena.jsx";
 import { SpatialRaycastSystem } from "./SpatialRaycastSystem.jsx";
+import {
+  applyStabilizedCamera,
+  resetCameraStabilizer,
+} from "../engine/cameraStabilizer.js";
 
 function readInput(inputRef) {
   return inputRef.current ?? {};
 }
 
-function SceneRoot({ inputRef, trackingRef, sceneStateRef, initialBlocks }) {
+function SceneRoot({ inputRef, sceneStateRef, initialBlocks }) {
   const rootRef = useRef(null);
   const camRigRef = useRef(null);
   const grabbedIdRef = useRef(null);
@@ -32,44 +36,11 @@ function SceneRoot({ inputRef, trackingRef, sceneStateRef, initialBlocks }) {
       : DEFAULT_BLOCKS;
 
   useFrame((_, delta) => {
-    if (trackingRef?.current) {
-      inputRef.current = buildSpatialInput(trackingRef);
-    }
     const root = rootRef.current;
     const rig = camRigRef.current;
     if (!root || !rig) return;
-    const { interaction, continuum } = readInput(inputRef);
-    const dt = Math.min(delta, 0.05);
-
-    const zoomFrozen = continuum?.zoomFrozen === true;
-    const orbitFrozen = continuum?.orbitFrozen === true;
-
-    if (!zoomFrozen) {
-      const z = continuum?.smoothedZoom ?? 1;
-      root.scale.lerp(new THREE.Vector3(z, z, z), 1 - 0.00015 ** delta);
-    }
-
-    const yaw = orbitFrozen ? 0 : continuum?.orbitYaw ?? 0;
-    const pitch = orbitFrozen ? 0 : continuum?.orbitPitch ?? 0;
-    const roll = orbitFrozen ? 0 : continuum?.orbitRoll ?? 0;
-    if (continuum?.active && !orbitFrozen && (Math.abs(yaw) > 1e-5 || Math.abs(pitch) > 1e-5)) {
-      rig.rotation.y += yaw;
-      rig.rotation.x = THREE.MathUtils.clamp(rig.rotation.x + pitch, -1.15, 1.15);
-    }
-    if (continuum?.active && !orbitFrozen && Math.abs(roll) > 1e-5) {
-      rig.rotation.z += roll;
-    } else if (!orbitFrozen) {
-      rig.rotation.z *= 0.94;
-    }
-
-    if (continuum?.active && !orbitFrozen) {
-      const panLerp = continuum.palmDrive ? 0.08 : 0.1;
-      rig.position.x = THREE.MathUtils.lerp(rig.position.x, continuum.panX ?? 0, panLerp);
-      rig.position.z = THREE.MathUtils.lerp(rig.position.z, continuum.panZ ?? 0, panLerp);
-    } else if (!continuum?.active) {
-      rig.position.x = THREE.MathUtils.lerp(rig.position.x, 0, 0.06);
-      rig.position.z = THREE.MathUtils.lerp(rig.position.z, 0, 0.06);
-    }
+    const { continuum } = readInput(inputRef);
+    applyStabilizedCamera(rig, root, continuum, delta);
   });
 
   return (
@@ -81,7 +52,7 @@ function SceneRoot({ inputRef, trackingRef, sceneStateRef, initialBlocks }) {
         <directionalLight position={[-3, 6, 2]} intensity={0.4} color="#b8f0ff" />
 
         <WorkspaceArena />
-        <ReactiveParticleField inputRef={inputRef} count={2200} />
+        <ReactiveParticleField inputRef={inputRef} count={650} />
         <PalmAffordance inputRef={inputRef} />
         <BimanualGuides inputRef={inputRef} />
 
@@ -110,7 +81,13 @@ function SceneRoot({ inputRef, trackingRef, sceneStateRef, initialBlocks }) {
   );
 }
 
-export function SpatialLabCanvas({ inputRef, trackingRef, sceneStateRef, initialScene }) {
+function PostFXGate() {
+  const cfg = getHandControlConfig();
+  if (!cfg.enablePostFX) return null;
+  return <SpatialPostFX />;
+}
+
+export function SpatialLabCanvas({ inputRef, sceneStateRef, initialScene }) {
   if (!sceneStateRef.current.blocks?.length) {
     sceneStateRef.current.blocks = initialScene?.blocks ?? DEFAULT_BLOCKS.map((b) => ({
       id: b.id,
@@ -133,11 +110,10 @@ export function SpatialLabCanvas({ inputRef, trackingRef, sceneStateRef, initial
         <Suspense fallback={null}>
           <SceneRoot
             inputRef={inputRef}
-            trackingRef={trackingRef}
             sceneStateRef={sceneStateRef}
             initialBlocks={initialScene?.blocks}
           />
-          <SpatialPostFX />
+          <PostFXGate />
         </Suspense>
       </Canvas>
     </div>

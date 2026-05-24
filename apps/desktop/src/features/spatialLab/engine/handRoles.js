@@ -3,10 +3,12 @@
  * MediaPipe handedness: "Left" = mano izquierda de la persona.
  */
 
-/** En webcam espejo: mano izquierda del usuario suele tener muñeca a la derecha de la imagen (x alto). */
+import { getHandControlConfig } from "./handControlSettings.js";
+
+/** Webcam espejada: muñeca a la izquierda del frame ≈ mano derecha del usuario. */
 function inferSideFromWrist(hand) {
   if (!hand?.[0]) return "unknown";
-  return hand[0].x > 0.48 ? "left" : "right";
+  return hand[0].x < 0.52 ? "right" : "left";
 }
 
 function normalizeSide(label) {
@@ -48,11 +50,20 @@ export function resolveBimanualHands(hands, proximities = [], handednesses = [])
 
   const bothVisible = !!(left && right);
 
+  let leftOut = left ? { hand: left.hand, proximity: left.proximity, side: "left" } : null;
+  let rightOut = right ? { hand: right.hand, proximity: right.proximity, side: "right" } : null;
+
+  if (getHandControlConfig().swapHands) {
+    const tmp = leftOut;
+    leftOut = rightOut;
+    rightOut = tmp;
+  }
+
   return {
-    left: left ? { hand: left.hand, proximity: left.proximity, side: "left" } : null,
-    right: right ? { hand: right.hand, proximity: right.proximity, side: "right" } : null,
+    left: leftOut,
+    right: rightOut,
     bothVisible,
-    ordered: [left?.hand, right?.hand].filter(Boolean),
+    ordered: [leftOut?.hand, rightOut?.hand].filter(Boolean),
   };
 }
 

@@ -33,12 +33,12 @@ export function PalmAffordance({ inputRef }) {
     const z = continuum?.smoothedZoom ?? 1;
     const s = 0.06 + (interaction?.fieldStrength ?? 0.2) * 0.05 + (z - 1) * 0.04;
     core.scale.setScalar(s);
-    ring.scale.setScalar(1.6 + Math.sin(state.clock.elapsedTime * 3) * 0.08);
-    ring.rotation.z = state.clock.elapsedTime * 0.8;
+    ring.scale.setScalar(1.55);
+    ring.rotation.z = state.clock.elapsedTime * 0.15;
 
-    const pushing = continuum?.pushing;
-    const pulling = continuum?.pulling;
-    core.material.color.set(pushing ? "#45ffb1" : pulling ? "#ffc857" : "#62e9ff");
+    if (continuum?.pushing) core.material.color.set("#45ffb1");
+    else if (continuum?.pulling) core.material.color.set("#ffc857");
+    else core.material.color.set("#62e9ff");
   });
 
   return (

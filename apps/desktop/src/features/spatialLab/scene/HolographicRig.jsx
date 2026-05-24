@@ -18,7 +18,7 @@ export function HolographicRig({ inputRef }) {
     ring.rotation.z = t * 0.35;
 
     if (palm) {
-      ring.position.lerp(new THREE.Vector3(palm.x, palm.y, palm.z + 0.2), 0.12);
+      ring.position.lerp(new THREE.Vector3(palm.x, palm.y, palm.z + 0.2), 0.04);
       const s = 0.7 + (interaction?.fieldStrength ?? 0.2) * 0.55;
       ring.scale.setScalar(s);
     }

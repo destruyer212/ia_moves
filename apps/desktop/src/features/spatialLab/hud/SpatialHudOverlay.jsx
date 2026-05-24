@@ -11,7 +11,7 @@ export function SpatialHudOverlay({ snapshot, perf, vision }) {
       <header className="spatial-hud__brand">
         <span className="spatial-hud__kicker">IA MOVES · SPATIAL COMPUTING</span>
         <h2 className="spatial-hud__title">Neural Sandbox 2050</h2>
-        <p className="spatial-hud__subtitle">Bimanual volumetric rig · plano ampliado</p>
+        <p className="spatial-hud__subtitle">Pinza izquierda = zoom · mano derecha = girar (cerca o lejos)</p>
       </header>
 
       <div className="spatial-hud__mode">
@@ -47,7 +47,11 @@ export function SpatialHudOverlay({ snapshot, perf, vision }) {
         </div>
         <div>
           <dt>Manos</dt>
-          <dd>{snapshot?.hands?.length ?? 0}</dd>
+          <dd>
+            {snapshot?.hands?.length ?? 0}
+            {snapshot?.continuum?.leftPinchActive ? " · pinza L" : ""}
+            {snapshot?.continuum?.rightPinchActive ? " · pinza R" : ""}
+          </dd>
         </div>
         <div>
           <dt>Distancia</dt>
